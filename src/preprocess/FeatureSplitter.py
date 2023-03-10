@@ -1,3 +1,6 @@
+import cachetools
+import deprecated
+
 import numpy as np
 import pandas as pd
 from scipy.stats import spearmanr
@@ -5,6 +8,7 @@ from pymoo.algorithms.soo.nonconvex.brkga import BRKGA
 from pymoo.core.duplicate import ElementwiseDuplicateElimination
 from pymoo.core.problem import ElementwiseProblem
 from pymoo.optimize import minimize
+from pymoo.termination.default import DefaultSingleObjectiveTermination
 
 from dataset.VFLDataset import VFLAlignedDataset, VFLRawDataset
 
@@ -67,12 +71,14 @@ class ImportanceSplitter:
 
 class CorrelationSplitter:
 
-    def __init__(self, num_parties: int):
+    def __init__(self, num_parties: int, gamma: float = 0):
         """
         Split a 2D dataset by feature correlation (assuming the features are equally important).
         :param num_parties: [int] number of parties
+        :param gamma: [float] the weight of inter-party correlation
         """
         self.num_parties = num_parties
+        self.gamma = gamma
 
         # split result of the last call of split()
         self.corr = None
@@ -84,42 +90,55 @@ class CorrelationSplitter:
         self.best_feature_per_party = None
         self.best_permutation = None
 
+    @staticmethod
+    def sort_order_by_party(order, n_features_on_party):
+        order_cut_points = np.cumsum(n_features_on_party)
+        order_cut_points = np.insert(order_cut_points, 0, 0)
+        sorted_order_by_party = []
+        for i in range(1, len(order_cut_points)):
+            sorted_order_by_party.append(tuple(sorted(order[order_cut_points[i - 1]:order_cut_points[i]])))
+        return sorted_order_by_party
+
     # Nested class for BRKGA solver: duplicate elimination of permutations
     class DuplicationElimination(ElementwiseDuplicateElimination):
-        def is_equal(self, a, b):
-            return a.get("hash") == b.get("hash")
+        def is_equal(self, perm_a, perm_b):
+            return perm_a.get("hash") == perm_b.get("hash")
 
     # Nested class for BRKGA solver: max-mcor problem definition
     class CorrMaxProblem(ElementwiseProblem):
-        def __init__(self, corr, n_features_on_party):
+        def __init__(self, corr, n_features_on_party, gamma):
             super().__init__(n_var=corr.shape[1], n_obj=1, n_constr=0, xl=-1, xu=1)
             self.corr = corr
             self.n_features_on_party = n_features_on_party
+            self.gamma = gamma
 
         def _evaluate(self, x, out, *args, **kwargs):
             order = np.argsort(x)
-            corr_perm = self.corr[:, order]
-            out['F'] = -CorrelationSplitter.mean_mcor(corr_perm, self.n_features_on_party)
+            corr_perm = self.corr[order, :][:, order]
+            out['F'] = -CorrelationSplitter.overall_corr_score(corr_perm, self.n_features_on_party, gamma=self.gamma)
             out['order'] = order
-            out['hash'] = hash(tuple(order))
+            sorted_order_by_party = CorrelationSplitter.sort_order_by_party(order, self.n_features_on_party)
+            out['hash'] = hash(tuple(sorted_order_by_party))
 
     # Nested class for BRKGA solver: min-mcor problem definition
     class CorrMinProblem(ElementwiseProblem):
-        def __init__(self, corr, n_features_on_party):
+        def __init__(self, corr, n_features_on_party, gamma):
             super().__init__(n_var=corr.shape[1], n_obj=1, n_constr=0, xl=-1, xu=1)
             self.corr = corr
             self.n_features_on_party = n_features_on_party
+            self.gamma = gamma
 
         def _evaluate(self, x, out, *args, **kwargs):
             order = np.argsort(x)
-            corr_perm = self.corr[:, order]
-            out['F'] = CorrelationSplitter.mean_mcor(corr_perm, self.n_features_on_party)
+            corr_perm = self.corr[order, :][:, order]
+            out['F'] = CorrelationSplitter.overall_corr_score(corr_perm, self.n_features_on_party, gamma=self.gamma)
             out['order'] = order
-            out['hash'] = hash(tuple(order))
+            sorted_order_by_party = CorrelationSplitter.sort_order_by_party(order, self.n_features_on_party)
+            out['hash'] = hash(tuple(sorted_order_by_party))
 
     # Nested class for BRKGA solver: best-matched-mcor problem definition
     class CorrBestMatchProblem(ElementwiseProblem):
-        def __init__(self, corr, n_features_on_party, beta, min_mcor, max_mcor):
+        def __init__(self, corr, n_features_on_party, beta, min_mcor, max_mcor, gamma):
             super().__init__(n_var=corr.shape[1], n_obj=1, n_constr=0, xl=-1, xu=1)
             assert min_mcor < max_mcor, f"min_mcor {min_mcor} should be smaller than max_mcor {max_mcor}"
             self.corr = corr
@@ -127,17 +146,19 @@ class CorrelationSplitter:
             self.beta = beta
             self.max_mcor = max_mcor
             self.min_mcor = min_mcor
+            self.gamma = gamma
 
         def _evaluate(self, x, out, *args, **kwargs):
             order = np.argsort(x)
-            corr_perm = self.corr[:, order]
-            mcor = CorrelationSplitter.mean_mcor(corr_perm, self.n_features_on_party)
+            corr_perm = self.corr[order, :][:, order]
+            mcor = CorrelationSplitter.overall_corr_score(corr_perm, self.n_features_on_party, gamma=self.gamma)
             target_mcor = self.beta * self.max_mcor + (1 - self.beta) * self.min_mcor
 
             out['F'] = np.abs(mcor - target_mcor)
             out['mcor'] = mcor
             out['order'] = order
-            out['hash'] = hash(tuple(order))
+            sorted_order_by_party = CorrelationSplitter.sort_order_by_party(order, self.n_features_on_party)
+            out['hash'] = hash(tuple(sorted_order_by_party))
 
     @staticmethod
     def mcor_singular(corr):
@@ -156,7 +177,7 @@ class CorrelationSplitter:
         return score
 
     @staticmethod
-    def mean_mcor(corr, n_features_on_party, mcor_func: callable = mcor_singular):
+    def overall_corr_score_inner(corr, n_features_on_party, mcor_func: callable = mcor_singular):
         """
         Calculate the mean of mcor inside all parties. This is a three-party example of corr:
         [ v1 v1 .  .  .  .  ]
@@ -186,6 +207,48 @@ class CorrelationSplitter:
         return np.mean(mcors)
 
     @staticmethod
+    def overall_corr_score(corr, n_features_on_party, mcor_func: callable = mcor_singular, gamma=0.):
+        """
+        Calculate the correlation score of a correlation matrix. Besides inner-party correlation, this function also
+        evaluates inter-party correlation. The overall score is the mean of the inner-party minus the inter-party
+        correlation.
+        :param corr: [np.ndarray] correlation matrix
+        :param n_features_on_party: [list] number of features on each party
+        :param mcor_func: [callable] function to calculate the correlation score of a correlation matrix
+        :param gamma: [float] weight of inter-party correlation
+        :return: [float] correlation score
+        """
+        if np.isclose(gamma, 0):
+            return CorrelationSplitter.overall_corr_score_inner(corr, n_features_on_party, mcor_func)
+
+        assert gamma > 0, f"gamma {gamma} should be non-negative"
+
+        n_parties = len(n_features_on_party)
+        assert sum(n_features_on_party) == corr.shape[0]
+        corr_cut_points = np.cumsum(n_features_on_party)
+        corr_cut_points = np.insert(corr_cut_points, 0, 0)
+        inner_mcors = []
+        inter_mcors = []
+        for i in range(n_parties):
+            for j in range(n_parties):
+                start_i = corr_cut_points[i]
+                end_i = corr_cut_points[i + 1]
+                start_j = corr_cut_points[j]
+                end_j = corr_cut_points[j + 1]
+                corr_ij = corr[start_i:end_i, start_j:end_j]
+                mcor_score = mcor_func(corr_ij)
+                if i == j:
+                    inner_mcors.append(mcor_score)
+                else:
+                    inter_mcors.append(mcor_score)
+        inner_mean_mcor = np.mean(inner_mcors)
+        inter_mean_mcor = np.mean(inter_mcors)
+        assert inner_mean_mcor >= 0 and inter_mean_mcor >= 0, f"inner_mean_mcor: {inner_mean_mcor}, " \
+                                                                f"inter_mean_mcor: {inter_mean_mcor}"
+        # print("inner_mean_mcor: {}, inter_mean_mcor: {}".format(inner_mean_mcor, inter_mean_mcor))
+        return inner_mean_mcor - inter_mean_mcor * gamma
+
+    @staticmethod
     def split_num_features_equal(n_features, n_parties):
         """
         Split n_features into n_parties equally. The first party may have more features.
@@ -207,7 +270,7 @@ class CorrelationSplitter:
         assert self.min_mcor is not None, "self.min_mcor is None. Please call fit() first."
         assert self.max_mcor is not None, "self.max_mcor is None. Please call fit() first."
 
-    def fit(self, X, n_elites=200, n_offsprings=700, n_mutants=100, n_gen=10, bias=0.8, seed=0, verbose=False):
+    def fit(self, X, n_elites=20, n_offsprings=70, n_mutants=10, n_gen=100, bias=0.7, seed=0, verbose=False):
         """
         Calculate the min and max mcor of the overall correlation score.
         Required parameters:
@@ -234,16 +297,20 @@ class CorrelationSplitter:
         )
 
         # calculate the min and max mcor
+        if verbose:
+            print("Calculating the min mcor of the overall correlation score...")
         res_min = minimize(
-            self.CorrMinProblem(self.corr, self.n_features_on_party),
+            self.CorrMinProblem(self.corr, self.n_features_on_party, gamma=self.gamma),
             algorithm,
             ('n_gen', n_gen),
             seed=seed,
             verbose=verbose,
         )
         self.min_mcor = res_min.F[0]
+        if verbose:
+            print("Calculating the max mcor of the overall correlation score...")
         res_max = minimize(
-            self.CorrMaxProblem(self.corr, self.n_features_on_party),
+            self.CorrMaxProblem(self.corr, self.n_features_on_party, gamma=self.gamma),
             algorithm,
             ('n_gen', n_gen),
             seed=seed,
@@ -251,7 +318,7 @@ class CorrelationSplitter:
         )
         self.max_mcor = -res_max.F[0]
 
-    def split(self, X, n_elites=200, n_offsprings=700, n_mutants=100, n_gen=10, bias=0.8, seed=0, verbose=False,
+    def split(self, X, n_elites=200, n_offsprings=700, n_mutants=300, n_gen=100, bias=0.7, seed=0, verbose=False,
               beta=0.5):
         """
         Use BRKGA to find the best order of features that minimizes the difference between the mean of mcor and the
@@ -274,6 +341,8 @@ class CorrelationSplitter:
         """
         self.check_fit_data()
 
+        # termintation by number of generations or the error is less than 1e-6
+        terminaton = DefaultSingleObjectiveTermination(ftol=1e-4, n_max_gen=n_gen, period=10)
         algorithm = BRKGA(
             n_elites=n_elites,
             n_offsprings=n_offsprings,
@@ -285,9 +354,10 @@ class CorrelationSplitter:
         # find the best permutation order that makes the mcor closest to the target mcor
         # target_mcor = beta * max_mcor + (1 - beta) * min_mcor
         res_beta = minimize(
-            self.CorrBestMatchProblem(self.corr, self.n_features_on_party, beta, self.min_mcor, self.max_mcor),
+            self.CorrBestMatchProblem(self.corr, self.n_features_on_party, beta, self.min_mcor, self.max_mcor,
+                                      gamma=self.gamma),
             algorithm,
-            ('n_gen', n_gen),
+            terminaton,
             seed=seed,
             verbose=verbose,
         )
