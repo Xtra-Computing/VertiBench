@@ -9,7 +9,6 @@ import torch
 from torch.utils.data import Dataset
 
 
-@torch.no_grad()
 class LocalDataset(Dataset):
     """
     Base class for local datasets
