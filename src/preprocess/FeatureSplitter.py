@@ -1,5 +1,7 @@
 from numbers import Real
 
+import cachetools
+
 import numpy as np
 import pandas as pd
 from scipy.stats import spearmanr
@@ -42,10 +44,11 @@ class ImportanceSplitter:
         assert 0 <= self.primary_party_id < self.num_parties, "primary_party_id should be in range of [0, num_parties)"
         assert len(self.weights) == self.num_parties, "The length of weights should equal to the number of parties"
 
-    def split(self, X):
+    def split(self, X, *args):
         """
         Split X by feature importance.
         :param X: [np.ndarray] 2D dataset
+        :param args: [np.ndarray] other datasets with the same number of columns as X (X1, X2, ..., Xn)
         :return: (X1, X2, ..., Xn) [np.ndarray, ...] where n is the number of parties
         """
         # Generate the probabilities of being assigned to each party
@@ -70,7 +73,19 @@ class ImportanceSplitter:
             else:
                 Xs.append(np.empty((X.shape[0], 0)))
 
-        return tuple(Xs)
+        # Split the other datasets
+        other_Xs_list = []
+        for other_X in args:
+            assert other_X.shape[1] == X.shape[1], "The number of columns of other datasets should be the same as X"
+            other_Xs = []
+            for party_id in range(self.num_parties):
+                if party_id in party_to_feature:
+                    other_Xs.append(other_X[:, party_to_feature[party_id]])
+                else:
+                    other_Xs.append(np.empty((other_X.shape[0], 0)))
+            other_Xs_list.append(other_Xs)
+
+        return tuple(Xs), *tuple(other_Xs_list)
 
 
 class CorrelationSplitter:
@@ -120,13 +135,19 @@ class CorrelationSplitter:
             self.n_features_on_party = n_features_on_party
             self.evaluator = evaluator
 
+        @cachetools.cached(cache=cachetools.TTLCache(maxsize=1000, ttl=60),
+                           key=lambda self, corr, order: hash(tuple(
+                               CorrelationSplitter.sort_order_by_party(order, self.n_features_on_party))))
+        def corr_score(self, corr, order):
+            corr_perm = corr[order, :][:, order]
+            return self.evaluator.overall_corr_score_diff(corr_perm, self.n_features_on_party)
+
         def _evaluate(self, x, out, *args, **kwargs):
             order = np.argsort(x)
-            corr_perm = self.corr[order, :][:, order]
-            out['F'] = -self.evaluator.overall_corr_score(corr_perm, self.n_features_on_party)
+            out['F'] = -self.corr_score(self.corr, order)
             out['order'] = order
-            sorted_order_by_party = CorrelationSplitter.sort_order_by_party(order, self.n_features_on_party)
-            out['hash'] = hash(tuple(sorted_order_by_party))
+            # sorted_order_by_party = CorrelationSplitter.sort_order_by_party(order, self.n_features_on_party)
+            out['hash'] = hash(tuple(order))
 
     # Nested class for BRKGA solver: min-mcor problem definition
     class CorrMinProblem(ElementwiseProblem):
@@ -136,13 +157,19 @@ class CorrelationSplitter:
             self.n_features_on_party = n_features_on_party
             self.evaluator = evaluator
 
+        @cachetools.cached(cache=cachetools.TTLCache(maxsize=1000, ttl=60),
+                           key=lambda self, corr, order: hash(tuple(
+                               CorrelationSplitter.sort_order_by_party(order, self.n_features_on_party))))
+        def corr_score(self, corr, order):
+            corr_perm = corr[order, :][:, order]
+            return self.evaluator.overall_corr_score_diff(corr_perm, self.n_features_on_party)
+
         def _evaluate(self, x, out, *args, **kwargs):
             order = np.argsort(x)
-            corr_perm = self.corr[order, :][:, order]
-            out['F'] = self.evaluator.overall_corr_score(corr_perm, self.n_features_on_party)
+            out['F'] = self.corr_score(self.corr, order)
             out['order'] = order
-            sorted_order_by_party = CorrelationSplitter.sort_order_by_party(order, self.n_features_on_party)
-            out['hash'] = hash(tuple(sorted_order_by_party))
+            # sorted_order_by_party = CorrelationSplitter.sort_order_by_party(order, self.n_features_on_party)
+            out['hash'] = hash(tuple(order))
 
     # Nested class for BRKGA solver: best-matched-mcor problem definition
     class CorrBestMatchProblem(ElementwiseProblem):
@@ -156,17 +183,23 @@ class CorrelationSplitter:
             self.min_mcor = min_mcor
             self.evaluator = evaluator
 
+        @cachetools.cached(cache=cachetools.TTLCache(maxsize=1000, ttl=60),
+                           key=lambda self, corr, order: hash(tuple(
+                               CorrelationSplitter.sort_order_by_party(order, self.n_features_on_party))))
+        def corr_score(self, corr, order):
+            corr_perm = corr[order, :][:, order]
+            return self.evaluator.overall_corr_score_diff(corr_perm, self.n_features_on_party)
+
         def _evaluate(self, x, out, *args, **kwargs):
             order = np.argsort(x)
-            corr_perm = self.corr[order, :][:, order]
-            mcor = self.evaluator.overall_corr_score(corr_perm, self.n_features_on_party)
+            mcor = self.corr_score(self.corr, order)
             target_mcor = self.beta * self.max_mcor + (1 - self.beta) * self.min_mcor
 
             out['F'] = np.abs(mcor - target_mcor)
             out['mcor'] = mcor
             out['order'] = order
-            sorted_order_by_party = CorrelationSplitter.sort_order_by_party(order, self.n_features_on_party)
-            out['hash'] = hash(tuple(sorted_order_by_party))
+            # sorted_order_by_party = CorrelationSplitter.sort_order_by_party(order, self.n_features_on_party)
+            out['hash'] = hash(tuple(order))
 
     @staticmethod
     def split_num_features_equal(n_features, n_parties):
@@ -237,7 +270,7 @@ class CorrelationSplitter:
         )
         self.max_mcor = -res_max.F[0]
 
-    def split(self, X, n_elites=200, n_offsprings=700, n_mutants=300, n_gen=100, bias=0.7, verbose=False,
+    def split(self, X, n_elites=20, n_offsprings=70, n_mutants=10, n_gen=100, bias=0.7, verbose=False,
               beta=0.5, term_tol=1e-4, term_period=10):
         """
         Use BRKGA to find the best order of features that minimizes the difference between the mean of mcor and the
