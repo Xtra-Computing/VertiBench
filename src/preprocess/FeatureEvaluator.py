@@ -1,3 +1,5 @@
+from typing import Iterable
+
 import numpy as np
 import pandas as pd
 from scipy.stats import spearmanr, hmean, gmean
@@ -8,13 +10,11 @@ class ImportanceEvaluator:
     """
     Importance evaluator for VFL datasets
     """
-    def __init__(self, model, sample_rate=0.01, seed=0):
+    def __init__(self, sample_rate=0.01, seed=0):
         """
-        :param model: [callable] model to be evaluated
         :param sample_rate: [float] sample rate of the dataset to calculate Shaplley values
         :param seed: [int] random seed of sampling
         """
-        self.model = model
         self.sample_rate = sample_rate
         self.seed = seed
         np.random.seed(seed)  # This is for reproducibility of Permutation explainer
@@ -33,17 +33,35 @@ class ImportanceEvaluator:
             "The number of samples should be the same for all parties"
         return n_features_on_party
 
-    def evaluate(self, Xs):
+    def evaluate_feature(self, X, model: callable):
+        """
+        Evaluate the importance of features in a dataset
+        :param X: feature matrix
+        :param model: [callable] model to be evaluated
+        :return: [np.ndarray] sum of importance on each party
+        """
+        # calculate Shapley values for each feature
+        explainer = shap.explainers.Permutation(model, X)
+        sample_size = int(self.sample_rate * X.shape[0])
+        X_sample = shap.sample(X, sample_size, random_state=self.seed)
+        shap_values = explainer(X_sample).values
+
+        importance_by_feature = np.sum(np.abs(shap_values), axis=0)
+        assert importance_by_feature.shape[0] == X.shape[1], "The number of features should be the same"
+        return importance_by_feature
+
+    def evaluate(self, Xs, model: callable):
         """
         Evaluate the importance of features in VFL datasets
         :param Xs: [list] list of feature matrices
+        :param model: [callable] model to be evaluated
         :return: [np.ndarray] sum of importance on each party
         """
         n_features_on_party = self.check_data(Xs)
         X = np.concatenate(Xs, axis=1)
 
         # calculate Shapley values for each feature
-        explainer = shap.explainers.Permutation(self.model, X)
+        explainer = shap.explainers.Permutation(model, X)
         sample_size = int(self.sample_rate * X.shape[0])
         X_sample = shap.sample(X, sample_size, random_state=self.seed)
         shap_values = explainer(X_sample).values

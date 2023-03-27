@@ -44,34 +44,42 @@ class ImportanceSplitter:
         assert 0 <= self.primary_party_id < self.num_parties, "primary_party_id should be in range of [0, num_parties)"
         assert len(self.weights) == self.num_parties, "The length of weights should equal to the number of parties"
 
-    def split(self, X, *args):
+    def split_indices(self, X):
         """
-        Split X by feature importance.
+        Split the indices of X by feature importance.
         :param X: [np.ndarray] 2D dataset
-        :param args: [np.ndarray] other datasets with the same number of columns as X (X1, X2, ..., Xn)
-        :return: (X1, X2, ..., Xn) [np.ndarray, ...] where n is the number of parties
+        :return: [list] list of indices of each party
         """
         # Generate the probabilities of being assigned to each party
         # All the features share the same ratio
         probs = np.random.dirichlet(self.weights)
 
         # Assign each feature to a party
-        party_to_feature = {}
+        party_to_feature = [[] for _ in range(self.num_parties)]
         party_ids = np.random.choice(self.num_parties, size=X.shape[1], p=probs)
         for feature_id in range(X.shape[1]):
             party_id = party_ids[feature_id]
-            if party_id not in party_to_feature:
-                party_to_feature[party_id] = [feature_id]
-            else:
-                party_to_feature[party_id].append(feature_id)
+            party_to_feature[party_id].append(feature_id)
+
+        return party_to_feature
+
+    def split(self, X, *args, indices=None):
+        """
+        Split X by feature importance.
+        :param X: [np.ndarray] 2D dataset
+        :param args: [np.ndarray] other datasets with the same number of columns as X (X1, X2, ..., Xn)
+        :param indices: [list] list of indices of each party. If not given, the indices will be generated randomly.
+        :return: (X1, X2, ..., Xn) [np.ndarray, ...] where n is the number of parties
+        """
+        if indices is None:
+            party_to_feature = self.split_indices(X)
+        else:
+            party_to_feature = indices
 
         # Split the dataset according to party_to_feature
         Xs = []
         for party_id in range(self.num_parties):
-            if party_id in party_to_feature:
-                Xs.append(X[:, party_to_feature[party_id]])
-            else:
-                Xs.append(np.empty((X.shape[0], 0)))
+            Xs.append(X[:, party_to_feature[party_id]])
 
         # Split the other datasets
         other_Xs_list = []
@@ -79,13 +87,13 @@ class ImportanceSplitter:
             assert other_X.shape[1] == X.shape[1], "The number of columns of other datasets should be the same as X"
             other_Xs = []
             for party_id in range(self.num_parties):
-                if party_id in party_to_feature:
-                    other_Xs.append(other_X[:, party_to_feature[party_id]])
-                else:
-                    other_Xs.append(np.empty((other_X.shape[0], 0)))
+                other_Xs.append(other_X[:, party_to_feature[party_id]])
             other_Xs_list.append(other_Xs)
 
-        return tuple(Xs), *tuple(other_Xs_list)
+        if len(other_Xs_list) == 0:
+            return tuple(Xs)
+        else:
+            return tuple(Xs), *tuple(other_Xs_list)
 
 
 class CorrelationSplitter:

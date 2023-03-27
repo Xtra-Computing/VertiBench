@@ -375,15 +375,10 @@ def test_corr_and_imp_vs_acc(eval_imp=True, eval_corr=True, n_informative=100, n
         plt.show()
 
 
-def test_corr_vs_delta_acc(n_rounds=1, n_informative=5, n_redundant=195, n_repeated=0, seed=0):
-    Xq, yq = make_classification(n_samples=10000, n_features=50,
-                                 n_informative=n_informative, n_redundant=n_redundant, n_repeated=n_repeated,
-                                 n_classes=2, random_state=seed, shuffle=True, class_sep=1)
-    Xp, yp = make_classification(n_samples=10000, n_features=50,
-                                 n_informative=n_informative, n_redundant=n_redundant, n_repeated=n_repeated,
-                                 n_classes=2, random_state=seed, shuffle=True, class_sep=1)
-    X = np.concatenate([Xq, Xp], axis=1)
-    y = yp * yq
+def test_corr_vs_delta_acc(n_rounds=1, n_informative=5, n_redundant=0, n_repeated=0, seed=0):
+    X, y = make_classification(n_samples=10000, n_features=50,
+                               n_informative=n_informative, n_redundant=n_redundant, n_repeated=n_repeated,
+                               n_classes=2, random_state=seed, shuffle=True, class_sep=1)
     model = XGBClassifier(tree_method='gpu_hist', gpu_id=1, n_estimators=50, max_depth=5, learning_rate=0.3)
     train_ids, test_ids = train_test_split(np.arange(X.shape[0]), test_size=0.2, random_state=seed)
 
@@ -403,7 +398,7 @@ def test_corr_vs_delta_acc(n_rounds=1, n_informative=5, n_redundant=195, n_repea
         for i in range(n_rounds):
             print(f"Round {i}, beta={beta}")
             # split the columns into two parties
-            X1, X2 = corr_splitter.split(X, beta=beta, verbose=True)
+            X1, X2 = corr_splitter.split(X, beta=beta, verbose=False)
 
             # predefined train/test split
             X1_train, X1_test, X2_train, X2_test = X1[train_ids], X1[test_ids], X2[train_ids], X2[test_ids]
@@ -429,29 +424,99 @@ def test_corr_vs_delta_acc(n_rounds=1, n_informative=5, n_redundant=195, n_repea
     corr_summary = np.array(corr_summary)
     acc1_summary = np.array(acc1_summary)
     acc2_summary = np.array(acc2_summary)
+    mean_acc_improve = acc_combine - (acc1_summary + acc2_summary) / 2
 
     corr_order = np.argsort(corr_summary)
     plt.figure()
-    plt.scatter(corr_summary, acc_combine - acc1_summary, marker='o')
+    plt.scatter(corr_summary[corr_order], mean_acc_improve[corr_order], marker='o')
     # add a regression line
-    z = np.polyfit(corr_summary, acc_combine - acc1_summary, 1)
+    z = np.polyfit(corr_summary[corr_order], mean_acc_improve[corr_order], 1)
     py = np.polyval(z, corr_summary[corr_order])
     plt.plot(corr_summary[corr_order], py, "r--")
     plt.xlabel("Inter-party correlation")
-    plt.ylabel("Accuracy improvement")
-    plt.title("Inter-party correlation vs accuracy improvement on party 1")
+    plt.ylabel("Average accuracy improvement")
+    plt.title("Inter-party correlation vs average accuracy improvement")
     plt.show()
 
+    # plt.figure()
+    # plt.scatter(corr_summary, acc_combine - acc2_summary, marker='o')
+    # # add a regression line
+    # z = np.polyfit(corr_summary, acc_combine - acc2_summary, 1)
+    # py = np.polyval(z, corr_summary[corr_order])
+    # plt.plot(corr_summary[corr_order], py, "r--")
+    # plt.xlabel("Inter-party correlation")
+    # plt.ylabel("Accuracy improvement")
+    # plt.title("Inter-party correlation vs accuracy improvement on party 2")
+    # plt.show()
+
+
+def test_imp_vs_delta_acc(n_rounds=1, n_informative=5, n_redundant=0, n_repeated=0, seed=0):
+    X, y = make_classification(n_samples=10000, n_features=50,
+                               n_informative=n_informative, n_redundant=n_redundant, n_repeated=n_repeated,
+                               n_classes=2, random_state=seed, shuffle=True, class_sep=1)
+    model = XGBClassifier(tree_method='gpu_hist', gpu_id=1, n_estimators=50, max_depth=5, learning_rate=0.3)
+    train_ids, test_ids = train_test_split(np.arange(X.shape[0]), test_size=0.2, random_state=seed)
+
+    # train the model on the whole data
+    model.fit(X[train_ids], y[train_ids])
+    y_pred = model.predict(X[test_ids])
+    acc_combine = accuracy_score(y[test_ids], y_pred)
+
+    # evaluate the importance of each feature
+    imp_evaluator = ImportanceEvaluator(sample_rate=0.005, seed=seed)
+    imp_by_feature = imp_evaluator.evaluate_feature(X, model.predict)
+
+    np.random.seed(seed)
+    imp1_summary = []
+    imp2_summary = []
+    acc1_summary = []
+    acc2_summary = []
+    imp_splitter = ImportanceSplitter(num_parties=2, seed=seed, weights=1)
+
+    for i in range(n_rounds):
+        # split the columns into two parties
+        (id1, id2) = imp_splitter.split_indices(X)
+        imp1 = imp_by_feature[id1].sum()
+        imp2 = imp_by_feature[id2].sum()
+        imp1_summary.append(imp1)
+        imp2_summary.append(imp2)
+
+        # predefined train/test split
+        X1, X2 = imp_splitter.split(X, indices=(id1, id2))
+        X1_train, X1_test, X2_train, X2_test = X1[train_ids], X1[test_ids], X2[train_ids], X2[test_ids]
+        y_train, y_test = y[train_ids], y[test_ids]
+
+        # train the model on X1 and X2, respectively
+        model.fit(X1_train, y_train)
+        y_pred1 = model.predict(X1_test)
+        acc1 = accuracy_score(y_test, y_pred1)
+        model.fit(X2_train, y_train)
+        y_pred2 = model.predict(X2_test)
+        acc2 = accuracy_score(y_test, y_pred2)
+        acc1_summary.append(acc1)
+        acc2_summary.append(acc2)
+        print(f"Round {i}, importance on party 1: {imp1:.4f}, importance on party 2: {imp2:.4f}, "
+                f"accuracy on party 1: {acc1:.4f}, accuracy on party 2: {acc2:.4f}")
+
+    # plot the importance vs accuracy improvement
+    imp_summary = np.array(imp1_summary + imp2_summary)
+    acc_summary = np.array(acc1_summary + acc2_summary)
+    mean_acc_improve = acc_combine - acc_summary / 2
+
+    imp_order = np.argsort(imp_summary)
     plt.figure()
-    plt.scatter(corr_summary, acc_combine - acc2_summary, marker='o')
+    plt.scatter(imp_summary[imp_order], mean_acc_improve[imp_order], marker='o')
     # add a regression line
-    z = np.polyfit(corr_summary, acc_combine - acc2_summary, 1)
-    py = np.polyval(z, corr_summary[corr_order])
-    plt.plot(corr_summary[corr_order], py, "r--")
-    plt.xlabel("Inter-party correlation")
-    plt.ylabel("Accuracy improvement")
-    plt.title("Inter-party correlation vs accuracy improvement on party 2")
+    z = np.polyfit(imp_summary[imp_order], mean_acc_improve[imp_order], 1)
+    py = np.polyval(z, imp_summary[imp_order])
+    plt.plot(imp_summary[imp_order], py, "r--")
+    plt.xlabel("Feature importance")
+    plt.ylabel("Average accuracy improvement")
+    plt.title("Feature importance vs average accuracy improvement")
     plt.show()
+
+
+
 
 
 
@@ -462,12 +527,13 @@ if __name__ == '__main__':
     # test_importance_splitter_diff_alpha(2000)
     # test_weight_different_alpha()
     # test_corr_splitter()
-    # test_corr_and_imp_vs_acc(eval_imp=False, eval_corr=True, n_informative=50, n_redundant=0, n_repeated=0)
-    # test_corr_and_imp_vs_acc(eval_imp=False, eval_corr=True, n_informative=50, n_redundant=50, n_repeated=50)
-    # test_corr_and_imp_vs_acc(eval_imp=False, eval_corr=True, n_informative=200, n_redundant=0, n_repeated=0)
-    # test_corr_and_imp_vs_acc(eval_imp=False, eval_corr=True, n_informative=10, n_redundant=0, n_repeated=190)
-    # test_corr_and_imp_vs_acc(eval_imp=False, eval_corr=True, n_informative=5, n_redundant=0, n_repeated=195)
-    # test_corr_and_imp_vs_acc(eval_imp=False, eval_corr=True, n_informative=5, n_redundant=195, n_repeated=0)
-    test_corr_vs_delta_acc(n_rounds=1, n_informative=15, n_redundant=15, n_repeated=15, seed=0)
 
+    # test_corr_vs_delta_acc(n_rounds=1, n_informative=50, n_redundant=0, n_repeated=0, seed=0)
+    # test_corr_vs_delta_acc(n_rounds=1, n_informative=5, n_redundant=45, n_repeated=0, seed=0)
+    # test_corr_vs_delta_acc(n_rounds=1, n_informative=5, n_redundant=0, n_repeated=45, seed=0)
+    # test_corr_vs_delta_acc(n_rounds=1, n_informative=5, n_redundant=0, n_repeated=0, seed=0)
 
+    test_imp_vs_delta_acc(n_rounds=5, n_informative=50, n_redundant=0, n_repeated=0, seed=0)
+    test_imp_vs_delta_acc(n_rounds=5, n_informative=5, n_redundant=45, n_repeated=0, seed=0)
+    test_imp_vs_delta_acc(n_rounds=5, n_informative=5, n_redundant=0, n_repeated=45, seed=0)
+    test_imp_vs_delta_acc(n_rounds=5, n_informative=5, n_redundant=0, n_repeated=0, seed=0)
