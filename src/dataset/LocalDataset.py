@@ -1,7 +1,8 @@
 import abc
 from typing import Protocol
+import pickle
 
-import numpy
+import numpy as np
 import pandas
 import pandas as pd
 
@@ -29,7 +30,10 @@ class LocalDataset(Dataset):
 
         self.check_shape()
 
-    @staticmethod
+        # if key is not provided, use the index as key
+        if self.key is None:
+            self.key = np.arange(self.X.shape[0])
+
     @torch.no_grad()
     def check_shape(self):
         if self.y is not None:
@@ -43,30 +47,38 @@ class LocalDataset(Dataset):
     def __getitem__(self, idx):
         """
         :param idx: the index of the item
-        :return: key[idx], X[idx], y[idx]    if y is not None and key is not None
-                 key[idx], X[idx]            if y is None     and key is not None
-                 X[idx], y[idx]              if y is not None and key is None
-                 X[idx]                      if y is None     and key is None
+        :return: key[idx], X[idx], y[idx]
         """
         X = self.X[idx]
         key = self.key[idx] if self.key is not None else None
         y = self.y[idx] if self.y is not None else None
         return key, X, y
 
+    @property
+    def data(self):
+        return self.key, self.X, self.y
+
     @classmethod
-    @torch.no_grad()
-    def from_csv(cls, csv_path, drop_header=False, key_cols=1):
+    def from_csv(cls, csv_path, header=None, key_cols=1):
         """
         Load dataset from csv file. The key_cols columns are keys, the last column is the label, and the rest
         columns are features.
         :param csv_path: path to csv file
-        :param drop_header: whether to drop header
+        :param header: row number(s) to use as the column names, and the start of the data.
+                       Same as the header in pandas.read_csv()
         :param key_cols: Int. Number of key columns.
         """
-        df = pd.read_csv(csv_path, header=None if drop_header else 0)
+        df = pd.read_csv(csv_path, header=header)
         assert df.shape[1] > key_cols + 1, "The number of columns should be larger than key_cols + 1"
-        key = torch.tensor(df.iloc[:, :key_cols].values)
-        X = torch.tensor(df.iloc[:, key_cols:-1].values)
-        y = torch.tensor(df.iloc[:, -1].values)
+        key = df.iloc[:, :key_cols].values
+        X = df.iloc[:, key_cols:-1].values
+        y = df.iloc[:, -1].values
         return cls(key, X, y)
         
+    def save(self, path):
+        """
+        Save the dataset to a file
+        :param path: path to the file
+        """
+        with open(path, 'wb') as f:
+            pickle.dump(self, f)

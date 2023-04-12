@@ -15,11 +15,10 @@ from .FeatureEvaluator import ImportanceEvaluator, CorrelationEvaluator
 
 
 class ImportanceSplitter:
-    def __init__(self, num_parties, primary_party_id=0, weights=1, seed=None):
+    def __init__(self, num_parties, weights=1, seed=None):
         """
         Split a 2D dataset by feature importance under dirichlet distribution (assuming the features are independent).
         :param num_parties: [int] number of parties
-        :param primary_party_id: [int] primary party (the party with labels) id, should be in range of [0, num_parties)
         :param weights: [int | list with size num_parties]
                         If weights is an int, the weight of each party is the same.
                         If weights is an array, the weight of each party is the corresponding element in the array.
@@ -28,7 +27,6 @@ class ImportanceSplitter:
         :param seed: [int] random seed
         """
         self.num_parties = num_parties
-        self.primary_party_id = primary_party_id
         self.weights = weights
         self.seed = seed
         np.random.seed(seed)
@@ -41,7 +39,6 @@ class ImportanceSplitter:
         """
         Check if the parameters are valid
         """
-        assert 0 <= self.primary_party_id < self.num_parties, "primary_party_id should be in range of [0, num_parties)"
         assert len(self.weights) == self.num_parties, "The length of weights should equal to the number of parties"
 
     def split_indices(self, X):
@@ -68,7 +65,7 @@ class ImportanceSplitter:
         Split X by feature importance.
         :param X: [np.ndarray] 2D dataset
         :param args: [np.ndarray] other datasets with the same number of columns as X (X1, X2, ..., Xn)
-        :param indices: [list] list of indices of each party. If not given, the indices will be generated randomly.
+        :param indices: [list] indices of features on each party. If not given, the indices will be generated randomly.
         :return: (X1, X2, ..., Xn) [np.ndarray, ...] where n is the number of parties
         """
         if indices is None:
@@ -345,7 +342,7 @@ class CorrelationSplitter:
             X_split.append(X[:, feature_ids])
         return tuple(X_split)
 
-    def fit_split(self, X, n_elites=200, n_offsprings=700, n_mutants=100, n_gen=10, bias=0.8, verbose=False):
+    def fit_split(self, X, n_elites=200, n_offsprings=700, n_mutants=100, n_gen=10, bias=0.8, verbose=False, beta=0.5):
         """
         Calculate the min and max mcor of the overall correlation score. Then use BRKGA to find the best order of
         features that minimizes the difference between the mean of mcor and the target mcor.
@@ -360,11 +357,12 @@ class CorrelationSplitter:
         :param bias: (float) bias of BRKGA
         :param seed: (int) seed of BRKGA
         :param verbose: (bool) whether to print the progress of BRKGA optimization
+        :param beta: [float] the tightness of inner-party correlation. Larger beta means more inner-party correlation
 
         :return: (X1, X2, ..., Xn) [np.ndarray, ...] where n is the number of parties
         """
         self.fit(X, n_elites, n_offsprings, n_mutants, n_gen, bias, verbose)
-        return self.split(X, n_elites, n_offsprings, n_mutants, n_gen, bias, verbose)
+        return self.split(X, n_elites, n_offsprings, n_mutants, n_gen, bias, verbose, beta)
 
 
 
