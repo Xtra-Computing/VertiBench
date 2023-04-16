@@ -25,8 +25,8 @@ class LocalDataset(Dataset):
         :param y: labels (1d array)
         """
         self.key = key
-        self.X = X
-        self.y = y
+        self.X = X.astype(np.float32)
+        self.y = y.astype(np.float32) if y is not None else None
 
         self.check_shape()
 
@@ -74,11 +74,12 @@ class LocalDataset(Dataset):
         X = df.iloc[:, key_cols:-1].values
         y = df.iloc[:, -1].values
         return cls(key, X, y)
+
+    @classmethod
+    def from_pickle(cls, pickle_path):
+        with open(pickle_path, 'rb') as f:
+            return pickle.load(f)
         
     def save(self, path):
-        """
-        Save the dataset to a file
-        :param path: path to the file
-        """
         with open(path, 'wb') as f:
             pickle.dump(self, f)

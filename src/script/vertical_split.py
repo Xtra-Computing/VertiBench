@@ -5,7 +5,6 @@ Split a dataset into vertical partitions.
 import argparse
 import os
 import sys
-import pathlib
 
 import numpy as np
 import pandas as pd
@@ -20,15 +19,16 @@ from preprocess.FeatureEvaluator import ImportanceEvaluator, CorrelationEvaluato
 from preprocess.FeatureSplitter import ImportanceSplitter, CorrelationSplitter
 from dataset.LocalDataset import LocalDataset
 from dataset.GlobalDataset import GlobalDataset
+from utils import party_path
 
 
 def split_vertical_data(X, num_parties,
-                        primary_party_id=0,
                         splitter='imp',
                         weights=1,
                         beta=1,
                         corr_function='spearman',
-                        seed=None):
+                        seed=None,
+                        verbose=False):
     """
     Split a dataset into vertical partitions.
 
@@ -38,8 +38,6 @@ def split_vertical_data(X, num_parties,
         the dataset to be split. The last column should be the label.
     num_parties: int
         number of parties
-    primary_party_id: int
-        the primary party id
     splitter: str
         splitter type, should be in ['imp', 'corr']
         imp: ImportanceSplitter
@@ -52,6 +50,8 @@ def split_vertical_data(X, num_parties,
         correlation function for the CorrelationSplitter, should be in ['pearson']
     seed: int
         random seed
+    verbose: bool
+        whether to print verbose information
 
     Returns
     -------
@@ -77,51 +77,54 @@ def split_vertical_data(X, num_parties,
     elif splitter == 'corr':
         evaluator = CorrelationEvaluator(corr_func=corr_func)
         splitter = CorrelationSplitter(num_parties, evaluator, seed)
-        Xs = splitter.fit_split(X, beta=beta)
+        Xs = splitter.fit_split(X, beta=beta, verbose=verbose)
     else:
         raise NotImplementedError(f"Splitter {splitter} is not implemented. splitter should be in ['imp', 'corr']")
 
     return Xs
 
 
-def party_path(dataset_path, n_parties, party_id, primary_party_id=0, splitter='imp', weights=1, beta=1, seed=None,
-               fmt='pkl') -> str:
-    path = pathlib.Path(dataset_path)
-    if splitter == 'imp':
-        # insert meta information before the file extension (extension may not be .csv)
-        path = path.with_name(f"{path.stem}_party{n_parties}-{party_id}_primary{primary_party_id}_{splitter}"
-                              f"_weight{weights:.1f}{'_seed' + str(seed) if seed is not None else ''}.{fmt}")
-    elif splitter == 'corr':
-        path = path.with_name(f"{path.stem}_party{n_parties}-{party_id}_primary{primary_party_id}_{splitter}"
-                              f"_beta{beta:.1f}{'_seed' + str(seed) if seed is not None else ''}.{fmt}")
-    else:
-        raise NotImplementedError(f"Splitter {splitter} is not implemented. splitter should be in ['imp', 'corr']")
-    return str(path)
-
-
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('dataset_path', type=str)
     parser.add_argument('num_parties', type=int)
-    parser.add_argument('--primary_party_id', '-p', type=int, default=0)
-    parser.add_argument('--splitter', '-sp', type=str, default='imp')
-    parser.add_argument('--weights', '-w', type=float)
-    parser.add_argument('--beta', '-b', type=float)
+    parser.add_argument('--splitter', '-sp', type=str, default='imp', help="splitter type, should be in ['imp', 'corr']")
+    parser.add_argument('--weights', '-w', type=float, default=1, help="weights for the ImportanceSplitter")
+    parser.add_argument('--beta', '-b', type=float, default=1, help="beta for the CorrelationSplitter")
     parser.add_argument('--seed', '-s', type=int, default=None)
+    parser.add_argument('--test', '-t', type=float, default=None, help="test split ratio. If None, no test split.")
+    parser.add_argument('--verbose', '-v', action='store_true')
     args = parser.parse_args()
 
+    if args.verbose:
+        print(f"Loading dataset from {args.dataset_path}...")
     dataset_path = args.dataset_path
     X, y = GlobalDataset.from_file(dataset_path).data
     Xs = split_vertical_data(X, num_parties=args.num_parties,
-                                primary_party_id=args.primary_party_id,
                                 splitter=args.splitter,
                                 weights=args.weights,
                                 beta=args.beta,
-                                seed=args.seed)
+                                seed=args.seed,
+                                verbose=args.verbose)
 
+    # random shuffle Xs
+    if args.verbose:
+        print("Random shuffle...")
+    np.random.seed(args.seed)
+    random_indices = np.random.permutation(X.shape[0])
+    Xs = [X[random_indices] for X in Xs]
+    y = y[random_indices]
+
+    if args.verbose:
+        print("Start splitting...")
     for i, X in enumerate(Xs):
+        n_train_samples = int(X.shape[0] * (1 - args.test))
+        X_train, y_train = X[:n_train_samples], y[:n_train_samples]
+        X_test, y_test = X[n_train_samples:], y[n_train_samples:]
         print(f"Saving party {i}: {X.shape}")
-        local_dataset = LocalDataset(X, y)
-        local_dataset.save(party_path(dataset_path, args.num_parties, i, args.primary_party_id, args.splitter,
-                                      args.weights, args.beta, args.seed, fmt='pkl'))
-
+        local_train_dataset = LocalDataset(X_train, y_train)
+        local_train_dataset.save(party_path(dataset_path, args.num_parties, i, args.splitter,
+                                            args.weights, args.beta, args.seed, type='train', fmt='pkl'))
+        local_test_dataset = LocalDataset(X_test, y_test)
+        local_test_dataset.save(party_path(dataset_path, args.num_parties, i, args.splitter,
+                                             args.weights, args.beta, args.seed, type='test', fmt='pkl'))

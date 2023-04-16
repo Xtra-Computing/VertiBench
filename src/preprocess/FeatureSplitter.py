@@ -264,6 +264,7 @@ class CorrelationSplitter:
             verbose=verbose,
         )
         self.min_mcor = res_min.F[0]
+        print(f"min_mcor: {self.min_mcor}")
         if verbose:
             print("Calculating the max mcor of the overall correlation score...")
         res_max = minimize(
@@ -274,6 +275,7 @@ class CorrelationSplitter:
             verbose=verbose,
         )
         self.max_mcor = -res_max.F[0]
+        print(f"max_mcor: {self.max_mcor}")
 
     def split(self, X, n_elites=20, n_offsprings=70, n_mutants=10, n_gen=100, bias=0.7, verbose=False,
               beta=0.5, term_tol=1e-4, term_period=10):
@@ -342,7 +344,8 @@ class CorrelationSplitter:
             X_split.append(X[:, feature_ids])
         return tuple(X_split)
 
-    def fit_split(self, X, n_elites=200, n_offsprings=700, n_mutants=100, n_gen=10, bias=0.8, verbose=False, beta=0.5):
+    def fit_split(self, X, n_elites=200, n_offsprings=700, n_mutants=100, n_gen=100, bias=0.7, verbose=False, beta=1.,
+                  term_tol=1e-4, term_period=10):
         """
         Calculate the min and max mcor of the overall correlation score. Then use BRKGA to find the best order of
         features that minimizes the difference between the mean of mcor and the target mcor.
@@ -358,11 +361,14 @@ class CorrelationSplitter:
         :param seed: (int) seed of BRKGA
         :param verbose: (bool) whether to print the progress of BRKGA optimization
         :param beta: [float] the tightness of inner-party correlation. Larger beta means more inner-party correlation
+                                and less inter-party correlation.
+        :param term_tol: (float) If out['F'] < term_tol after term_period generations, the algorithm terminates.
+        :param term_period: (int) Check the termination condition every term_period generations
 
         :return: (X1, X2, ..., Xn) [np.ndarray, ...] where n is the number of parties
         """
         self.fit(X, n_elites, n_offsprings, n_mutants, n_gen, bias, verbose)
-        return self.split(X, n_elites, n_offsprings, n_mutants, n_gen, bias, verbose, beta)
+        return self.split(X, n_elites, n_offsprings, n_mutants, n_gen, bias, verbose, beta, term_tol, term_period)
 
 
 

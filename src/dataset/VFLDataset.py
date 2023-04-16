@@ -1,5 +1,7 @@
 import abc
 from typing import Protocol
+import pickle
+import os.path
 
 import numpy
 import pandas
@@ -9,6 +11,7 @@ import torch
 from torch.utils.data import Dataset
 
 from .LocalDataset import LocalDataset
+from utils import party_path
 
 
 class VFLDataset:
@@ -113,4 +116,51 @@ class VFLAlignedDataset(VFLDataset, Dataset):
             Xs.append(X)
         _, _, y = self.local_datasets[self.primary_party_id][idx]
 
-        return tuple(Xs + [y])
+        return Xs, y
+
+    @classmethod
+    def from_pickle(cls, dir: str, dataset: str, n_parties, primary_party_id: int = 0,
+                    splitter: str = 'imp', weight: float = 1, beta: float = 1, seed: int = 0, type='train'):
+        """
+        Load a VFLAlignedDataset from pickle file. The pickle files are local datasets of each party.
+
+        Parameters
+        ----------
+        dir : str
+            The directory of pickle files.
+        dataset : str
+            The name of the dataset.
+        n_parties : int
+            The number of parties.
+        primary_party_id : int, optional
+            The primary party id, by default 0
+        splitter : str, optional
+            The splitter used to split the dataset, by default 'imp'
+        weight : float, optional
+            The weight of the primary party, by default 1
+        beta : float, optional
+            The beta of the primary party, by default 1
+        seed : int, optional
+            The seed of the primary party, by default 0
+        type : str, optional
+            The type of the dataset, by default 'train'. It should be ['train', 'test'].
+        """
+        assert type in ['train', 'test'], "type should be 'train' or 'test'"
+        local_datasets = []
+        for party_id in range(n_parties):
+            path_in_dir = party_path(dataset_path=dataset, n_parties=n_parties, party_id=party_id,
+                                     splitter=splitter, weight=weight, beta=beta, seed=seed, type=type, fmt='pkl')
+            path = os.path.join(dir, path_in_dir)
+            if not os.path.exists(path):
+                raise FileNotFoundError(f"File {path} does not exist")
+            local_dataset = LocalDataset.from_pickle(path)
+            if party_id != primary_party_id:    # remove y of secondary parties
+                local_dataset.y = None
+            local_datasets.append(local_dataset)
+        return cls(n_parties, local_datasets, primary_party_id)
+
+    @property
+    def local_input_channels(self):
+        return [local_dataset.X.shape[1] for local_dataset in self.local_datasets]
+
+
