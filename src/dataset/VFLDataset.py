@@ -4,6 +4,7 @@ import pickle
 import os.path
 
 import numpy
+import numpy as np
 import pandas
 import pandas as pd
 
@@ -11,7 +12,7 @@ import torch
 from torch.utils.data import Dataset
 
 from .LocalDataset import LocalDataset
-from utils import party_path
+from utils import PartyPath
 
 
 class VFLDataset:
@@ -91,6 +92,8 @@ class VFLAlignedDataset(VFLDataset, Dataset):
         :param primary_party_id: primary party (the party with labels) id, should be in range of [0, num_parties)
         """
         super().__init__(num_parties, local_datasets, primary_party_id)
+        self.local_datasets = np.array([None for _ in range(num_parties)])
+        self.local_datasets[:] = local_datasets
 
     def check_shape(self):
         """
@@ -148,8 +151,8 @@ class VFLAlignedDataset(VFLDataset, Dataset):
         assert type in ['train', 'test'], "type should be 'train' or 'test'"
         local_datasets = []
         for party_id in range(n_parties):
-            path_in_dir = party_path(dataset_path=dataset, n_parties=n_parties, party_id=party_id,
-                                     splitter=splitter, weight=weight, beta=beta, seed=seed, type=type, fmt='pkl')
+            path_in_dir = PartyPath(dataset_path=dataset, n_parties=n_parties, party_id=party_id,
+                                    splitter=splitter, weight=weight, beta=beta, seed=seed, fmt='pkl').data(type)
             path = os.path.join(dir, path_in_dir)
             if not os.path.exists(path):
                 raise FileNotFoundError(f"File {path} does not exist")

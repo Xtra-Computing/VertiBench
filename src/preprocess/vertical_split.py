@@ -11,7 +11,7 @@ import pandas as pd
 from scipy.stats import spearmanr, hmean, gmean
 
 # add src to python path
-sys.path.append(os.path.join(os.path.dirname(__file__), '.'))
+sys.path.append(os.path.join(os.path.dirname(__file__), '../script'))
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
@@ -19,7 +19,7 @@ from preprocess.FeatureEvaluator import ImportanceEvaluator, CorrelationEvaluato
 from preprocess.FeatureSplitter import ImportanceSplitter, CorrelationSplitter
 from dataset.LocalDataset import LocalDataset
 from dataset.GlobalDataset import GlobalDataset
-from utils import party_path
+from utils import PartyPath
 
 
 def split_vertical_data(X, num_parties,
@@ -123,8 +123,8 @@ if __name__ == '__main__':
         X_test, y_test = X[n_train_samples:], y[n_train_samples:]
         print(f"Saving party {i}: {X.shape}")
         local_train_dataset = LocalDataset(X_train, y_train)
-        local_train_dataset.save(party_path(dataset_path, args.num_parties, i, args.splitter,
-                                            args.weights, args.beta, args.seed, type='train', fmt='pkl'))
+        path = PartyPath(dataset_path, args.num_parties, i, args.splitter, args.weights, args.beta,
+                         args.seed, fmt='pkl')
+        local_train_dataset.save(path.train_data)
         local_test_dataset = LocalDataset(X_test, y_test)
-        local_test_dataset.save(party_path(dataset_path, args.num_parties, i, args.splitter,
-                                             args.weights, args.beta, args.seed, type='test', fmt='pkl'))
+        local_test_dataset.save(path.test_data)
