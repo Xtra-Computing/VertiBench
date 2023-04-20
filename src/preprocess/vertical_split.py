@@ -28,6 +28,7 @@ def split_vertical_data(X, num_parties,
                         beta=1,
                         corr_function='spearman',
                         seed=None,
+                        gpu_id=None,
                         verbose=False):
     """
     Split a dataset into vertical partitions.
@@ -50,6 +51,8 @@ def split_vertical_data(X, num_parties,
         correlation function for the CorrelationSplitter, should be in ['pearson']
     seed: int
         random seed
+    gpu_id: int
+        gpu id for the CorrelationSplitter and CorrelationEvaluator. If None, use cpu.
     verbose: bool
         whether to print verbose information
 
@@ -63,7 +66,7 @@ def split_vertical_data(X, num_parties,
     assert isinstance(X, np.ndarray), "data should be a numpy array"
     assert splitter in ['imp', 'corr'], "splitter should be in ['imp', 'corr']"
     if corr_function == 'spearman':
-        corr_func = lambda X: spearmanr(X).correlation
+        corr_func = None    # use default spearmanr
     else:
         raise NotImplementedError(f"Correlation function {corr_function} is not implemented. corr_function should be in"
                                   f" ['spearman']")
@@ -75,8 +78,8 @@ def split_vertical_data(X, num_parties,
         splitter = ImportanceSplitter(num_parties, weights, seed)
         Xs = splitter.split(X)
     elif splitter == 'corr':
-        evaluator = CorrelationEvaluator(corr_func=corr_func)
-        splitter = CorrelationSplitter(num_parties, evaluator, seed)
+        evaluator = CorrelationEvaluator(corr_func=corr_func, gpu_id=gpu_id)
+        splitter = CorrelationSplitter(num_parties, evaluator, seed, gpu_id=gpu_id)
         Xs = splitter.fit_split(X, beta=beta, verbose=verbose)
     else:
         raise NotImplementedError(f"Splitter {splitter} is not implemented. splitter should be in ['imp', 'corr']")
@@ -93,6 +96,7 @@ if __name__ == '__main__':
     parser.add_argument('--beta', '-b', type=float, default=1, help="beta for the CorrelationSplitter")
     parser.add_argument('--seed', '-s', type=int, default=None)
     parser.add_argument('--test', '-t', type=float, default=None, help="test split ratio. If None, no test split.")
+    parser.add_argument('--gpu_id', '-g', type=int, default=None)
     parser.add_argument('--verbose', '-v', action='store_true')
     args = parser.parse_args()
 
@@ -105,6 +109,7 @@ if __name__ == '__main__':
                                 weights=args.weights,
                                 beta=args.beta,
                                 seed=args.seed,
+                                gpu_id=args.gpu_id,
                                 verbose=args.verbose)
 
     # random shuffle Xs
@@ -116,7 +121,7 @@ if __name__ == '__main__':
     y = y[random_indices]
 
     if args.verbose:
-        print("Start splitting...")
+        print("Train test splitting...")
     for i, X in enumerate(Xs):
         n_train_samples = int(X.shape[0] * (1 - args.test))
         X_train, y_train = X[:n_train_samples], y[:n_train_samples]

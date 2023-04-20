@@ -1,10 +1,14 @@
 from numbers import Real
+import warnings
 
 import cachetools
 
 import numpy as np
 import pandas as pd
 from scipy.stats import spearmanr
+import torch
+from torchmetrics.functional import spearman_corrcoef
+
 from pymoo.algorithms.soo.nonconvex.brkga import BRKGA
 from pymoo.core.duplicate import ElementwiseDuplicateElimination
 from pymoo.core.problem import ElementwiseProblem
@@ -95,16 +99,24 @@ class ImportanceSplitter:
 
 class CorrelationSplitter:
 
-    def __init__(self, num_parties: int, evaluator: CorrelationEvaluator = None, seed=None):
+    def __init__(self, num_parties: int, evaluator: CorrelationEvaluator = None, seed=None, gpu_id=None):
         """
         Split a 2D dataset by feature correlation (assuming the features are equally important).
         :param num_parties: [int] number of parties
         :param evaluator: [CorrelationEvaluator] the evaluator to evaluate the correlation
         :param seed: [int] random seed
+        :param gpu_id: [int] GPU id
         """
         self.num_parties = num_parties
         self.evaluator = evaluator
         self.seed = seed
+        self.gpu_id = gpu_id
+        if self.gpu_id is not None:
+            assert evaluator.gpu_id == self.gpu_id, "The gpu_id of the evaluator should be the same as the gpu_id of the splitter"
+            self.device = torch.device("cuda:{}".format(self.gpu_id))
+        else:
+            self.device = torch.device("cpu")
+            warnings.warn("The device is set to CPU. This may cause the performance to be slow.")
 
         # split result of the last call of fit()
         self.corr = None
@@ -140,12 +152,12 @@ class CorrelationSplitter:
             self.n_features_on_party = n_features_on_party
             self.evaluator = evaluator
 
-        @cachetools.cached(cache=cachetools.TTLCache(maxsize=1000, ttl=60),
-                           key=lambda self, corr, order: hash(tuple(
-                               CorrelationSplitter.sort_order_by_party(order, self.n_features_on_party))))
+        # @cachetools.cached(cache=cachetools.TTLCache(maxsize=1000, ttl=60),
+        #                    key=lambda self, corr, order: hash(tuple(
+        #                        CorrelationSplitter.sort_order_by_party(order, self.n_features_on_party))))
         def corr_score(self, corr, order):
             corr_perm = corr[order, :][:, order]
-            return self.evaluator.overall_corr_score_diff(corr_perm, self.n_features_on_party)
+            return self.evaluator.overall_corr_score(corr_perm, self.n_features_on_party)
 
         def _evaluate(self, x, out, *args, **kwargs):
             order = np.argsort(x)
@@ -162,12 +174,12 @@ class CorrelationSplitter:
             self.n_features_on_party = n_features_on_party
             self.evaluator = evaluator
 
-        @cachetools.cached(cache=cachetools.TTLCache(maxsize=1000, ttl=60),
-                           key=lambda self, corr, order: hash(tuple(
-                               CorrelationSplitter.sort_order_by_party(order, self.n_features_on_party))))
+        # @cachetools.cached(cache=cachetools.TTLCache(maxsize=1000, ttl=60),
+        #                    key=lambda self, corr, order: hash(tuple(
+        #                        CorrelationSplitter.sort_order_by_party(order, self.n_features_on_party))))
         def corr_score(self, corr, order):
             corr_perm = corr[order, :][:, order]
-            return self.evaluator.overall_corr_score_diff(corr_perm, self.n_features_on_party)
+            return self.evaluator.overall_corr_score(corr_perm, self.n_features_on_party)
 
         def _evaluate(self, x, out, *args, **kwargs):
             order = np.argsort(x)
@@ -188,12 +200,12 @@ class CorrelationSplitter:
             self.min_mcor = min_mcor
             self.evaluator = evaluator
 
-        @cachetools.cached(cache=cachetools.TTLCache(maxsize=1000, ttl=60),
-                           key=lambda self, corr, order: hash(tuple(
-                               CorrelationSplitter.sort_order_by_party(order, self.n_features_on_party))))
+        # @cachetools.cached(cache=cachetools.TTLCache(maxsize=10000, ttl=60),
+        #                    key=lambda self, corr, order: hash(tuple(
+        #                        CorrelationSplitter.sort_order_by_party(order, self.n_features_on_party))))
         def corr_score(self, corr, order):
             corr_perm = corr[order, :][:, order]
-            return self.evaluator.overall_corr_score_diff(corr_perm, self.n_features_on_party)
+            return self.evaluator.overall_corr_score(corr_perm, self.n_features_on_party)
 
         def _evaluate(self, x, out, *args, **kwargs):
             order = np.argsort(x)
@@ -344,7 +356,7 @@ class CorrelationSplitter:
             X_split.append(X[:, feature_ids])
         return tuple(X_split)
 
-    def fit_split(self, X, n_elites=200, n_offsprings=700, n_mutants=100, n_gen=100, bias=0.7, verbose=False, beta=1.,
+    def fit_split(self, X, n_elites=20, n_offsprings=70, n_mutants=10, n_gen=100, bias=0.7, verbose=False, beta=1.,
                   term_tol=1e-4, term_period=10):
         """
         Calculate the min and max mcor of the overall correlation score. Then use BRKGA to find the best order of
