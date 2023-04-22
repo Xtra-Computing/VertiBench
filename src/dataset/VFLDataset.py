@@ -7,12 +7,14 @@ import numpy
 import numpy as np
 import pandas
 import pandas as pd
+from sklearn.preprocessing import MinMaxScaler
 
 import torch
 from torch.utils.data import Dataset
 
 from .LocalDataset import LocalDataset
 from utils import PartyPath
+from preprocess.FeatureEvaluator import CorrelationEvaluator, ImportanceEvaluator
 
 
 class VFLDataset:
@@ -166,4 +168,19 @@ class VFLAlignedDataset(VFLDataset, Dataset):
     def local_input_channels(self):
         return [local_dataset.X.shape[1] for local_dataset in self.local_datasets]
 
+    def scale_y_(self, lower=0, upper=1):
+        for local_dataset in self.local_datasets:
+            local_dataset.scale_y_(lower, upper)
+
+    def visualize_corr(self, corr_func='spearmanr', gpu_id=None, output_score=True):
+        """
+        Visualize the correlation of the dataset in heatmap.
+        """
+        evaluator = CorrelationEvaluator(corr_func=corr_func, gpu_id=gpu_id)
+        Xs = [local_dataset.X for local_dataset in self.local_datasets]
+        if output_score:
+            score = evaluator.fit_evaluate(Xs)
+        else:
+            score = evaluator.fit(Xs)   # score is None
+        evaluator.visualize(value=score)
 

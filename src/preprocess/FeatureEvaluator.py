@@ -6,12 +6,13 @@ import deprecated
 import numpy as np
 import pandas as pd
 import torch
+import torch.linalg
 from scipy.stats import spearmanr, hmean, gmean
 from sklearn.utils.extmath import randomized_svd
 from torchmetrics.functional import spearman_corrcoef
 import shap
 from joblib import Parallel, delayed
-
+import matplotlib.pyplot as plt
 
 class ImportanceEvaluator:
     """
@@ -113,24 +114,24 @@ class CorrelationEvaluator:
     """
     Correlation evaluator for VFL datasets
     """
-    def __init__(self, corr_func: callable = None, gamma=1.0, gpu_id=None):
+    def __init__(self, corr_func='spearmanr', gamma=1.0, gpu_id=None):
         """
-        :param corr_func: [callable] function to calculate the correlation between two features
+        :param corr_func: [str] function to calculate the correlation between two features
         :param gamma: [float] weight of the inner-party correlation score
         :param gpu_id: [int] GPU id to use. If None, use CPU
         """
-        self.corr_func = corr_func
+        assert corr_func in ["spearmanr"], "corr_func should be spearmanr"
         self.gamma = gamma
         self.corr = None
         self.n_features_on_party = None
         self.gpu_id = gpu_id
         if self.gpu_id is not None:
             self.device = torch.device(f"cuda:{self.gpu_id}")
-            if corr_func is None:
+            if corr_func == "spearmanr":
                 self.corr_func = self.spearmanr     # use CPU for now, a bug in GPU version
         else:
             self.device = torch.device("cpu")
-            if corr_func is None:
+            if corr_func == "spearmanr":
                 self.corr_func = self.spearmanr
         print(f"CorrelationEvaluator uses {self.device}")
 
@@ -207,6 +208,26 @@ class CorrelationEvaluator:
         # print(f"Time for calculating the correlation score: {end_time - start_time}")
         return score
 
+    def mcor_singular_exact_gpu(self, corr: torch.Tensor):
+        """
+        [Exact] Calculate the overall correlation score of a correlation matrix using the variance of singular values.
+        Using the definition of std: std = sqrt(E[X^2] - E[X]^2). E[X^2] can be calculated by trace(X^TX), which is
+        square of Frobenius norm. E[X] is known as nuclear norm.
+        This is an example of corr
+        [ v1 v1 ]
+        [ v1 v1 ]
+        :param corr:
+        :return:
+        """
+        # start_time = time.time()
+        EX2 = torch.norm(corr, p='fro') ** 2 / min(corr.shape)
+        EX = torch.norm(corr, p='nuc') / min(corr.shape)
+        score = torch.sqrt(EX2 - EX ** 2)
+
+        # end_time = time.time()
+        # print(f"Time for calculating the correlation score: {end_time - start_time}")
+        return float(score.item())
+
     @staticmethod
     def mcor_singular_approx(corr, n_components=400, n_oversamples=10, n_iter=4, random_state=0):
         """
@@ -271,7 +292,7 @@ class CorrelationEvaluator:
         :param corr: [np.ndarray] correlation matrix
         :param algo: [str] algorithm to calculate the overall correlation score of a correlation matrix
                     - 'auto': automatically choose the algorithm based on the size of the correlation matrix
-                              if the size is smaller than 1000, use 'exact', otherwise use 'approx'
+                              if the size is smaller than 200, use 'exact', otherwise use 'approx'
                     - 'exact': calculate the exact singular values
                     - 'approx': calculate the approximate singular values
         :param kwargs:
@@ -279,16 +300,20 @@ class CorrelationEvaluator:
         """
         if algo == 'auto':
             if min(corr.shape) < 1000:
-                assert self.gpu_id is None, "Exact algorithm cannot be used on GPU"
-                return CorrelationEvaluator.mcor_singular_exact(corr)
+                if self.gpu_id is not None:
+                    return self.mcor_singular_exact_gpu(corr)
+                else:
+                    return CorrelationEvaluator.mcor_singular_exact(corr)
             else:
                 if self.gpu_id is not None:
                     return self.mcor_singular_approx_gpu(corr, **kwargs)
                 else:
                     return CorrelationEvaluator.mcor_singular_approx(corr, **kwargs)
         elif algo == 'exact':
-            assert self.gpu_id is None, "Exact algorithm cannot be used on GPU"
-            return CorrelationEvaluator.mcor_singular_exact(corr)
+            if self.gpu_id is not None:
+                return self.mcor_singular_exact_gpu(corr)
+            else:
+                return CorrelationEvaluator.mcor_singular_exact(corr)
         elif algo == 'approx':
             if self.gpu_id is not None:
                 return self.mcor_singular_approx_gpu(corr, **kwargs)
@@ -462,7 +487,7 @@ class CorrelationEvaluator:
         self.n_features_on_party = self.check_data(Xs)
         start_time = time.time()
         self.corr = self.corr_func(np.concatenate(Xs, axis=1))
-        self.corr = np.nan_to_num(self.corr, nan=0)
+        self.corr = torch.nan_to_num(self.corr, nan=0)
         end_time = time.time()
         print(f"Correlation calculation time: {end_time - start_time:.2f}s")
         return self.overall_corr_score(self.corr, self.n_features_on_party)
@@ -483,3 +508,28 @@ class CorrelationEvaluator:
         """
         return self.overall_corr_score(self.corr, self.n_features_on_party)
 
+    def visualize(self, save_path=None, value=None):
+        """
+        Visualize the correlation matrix.
+        :param save_path: [str|None] path to save the figure. If None, the figure will be shown.
+        :param value: [float|None] The overall correlation score to be shown on the figure. If None, the score will not
+        be shown.
+        """
+        if self.corr is None:
+            raise ValueError("Please call fit() or fit_evaluate() first to calculate the correlation matrix.")
+        if type(self.corr) == torch.Tensor:
+            corr = self.corr.cpu().numpy()
+        else:
+            corr = self.corr
+        plt.figure(figsize=(10, 10))
+        plt.imshow(corr, cmap='plasma')
+        plt.colorbar()
+        if value is not None:
+            plt.title(f"Correlation matrix (inter-mcor={value:.2f})")
+        else:
+            plt.title("Correlation matrix")
+        if save_path is None:
+            plt.show()
+        else:
+            plt.savefig(save_path)
+            plt.close()

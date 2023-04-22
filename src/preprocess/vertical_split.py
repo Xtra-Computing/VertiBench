@@ -5,15 +5,15 @@ Split a dataset into vertical partitions.
 import argparse
 import os
 import sys
+import warnings
 
 import numpy as np
 import pandas as pd
 from scipy.stats import spearmanr, hmean, gmean
+import torch
 
 # add src to python path
-sys.path.append(os.path.join(os.path.dirname(__file__), '../script'))
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
 from preprocess.FeatureEvaluator import ImportanceEvaluator, CorrelationEvaluator
 from preprocess.FeatureSplitter import ImportanceSplitter, CorrelationSplitter
@@ -29,6 +29,7 @@ def split_vertical_data(X, num_parties,
                         corr_function='spearman',
                         seed=None,
                         gpu_id=None,
+                        n_jobs=1,
                         verbose=False):
     """
     Split a dataset into vertical partitions.
@@ -53,6 +54,8 @@ def split_vertical_data(X, num_parties,
         random seed
     gpu_id: int
         gpu id for the CorrelationSplitter and CorrelationEvaluator. If None, use cpu.
+    n_jobs: int
+        number of jobs for the CorrelationSplitter
     verbose: bool
         whether to print verbose information
 
@@ -79,7 +82,7 @@ def split_vertical_data(X, num_parties,
         Xs = splitter.split(X)
     elif splitter == 'corr':
         evaluator = CorrelationEvaluator(corr_func=corr_func, gpu_id=gpu_id)
-        splitter = CorrelationSplitter(num_parties, evaluator, seed, gpu_id=gpu_id)
+        splitter = CorrelationSplitter(num_parties, evaluator, seed, gpu_id=gpu_id, n_jobs=n_jobs)
         Xs = splitter.fit_split(X, beta=beta, verbose=verbose)
     else:
         raise NotImplementedError(f"Splitter {splitter} is not implemented. splitter should be in ['imp', 'corr']")
@@ -97,8 +100,13 @@ if __name__ == '__main__':
     parser.add_argument('--seed', '-s', type=int, default=None)
     parser.add_argument('--test', '-t', type=float, default=None, help="test split ratio. If None, no test split.")
     parser.add_argument('--gpu_id', '-g', type=int, default=None)
+    parser.add_argument('--jobs', '-j', type=int, default=1)
     parser.add_argument('--verbose', '-v', action='store_true')
     args = parser.parse_args()
+
+    if args.n_jobs > 1:
+        warnings.warn("Multi-threading has bugs. Set n_jobs=1 instead.")
+        args.n_jobs = 1
 
     if args.verbose:
         print(f"Loading dataset from {args.dataset_path}...")
@@ -110,6 +118,7 @@ if __name__ == '__main__':
                                 beta=args.beta,
                                 seed=args.seed,
                                 gpu_id=args.gpu_id,
+                                n_jobs=args.jobs,
                                 verbose=args.verbose)
 
     # random shuffle Xs
@@ -130,6 +139,6 @@ if __name__ == '__main__':
         local_train_dataset = LocalDataset(X_train, y_train)
         path = PartyPath(dataset_path, args.num_parties, i, args.splitter, args.weights, args.beta,
                          args.seed, fmt='pkl')
-        local_train_dataset.save(path.train_data)
+        local_train_dataset.to_pickle(path.train_data)
         local_test_dataset = LocalDataset(X_test, y_test)
-        local_test_dataset.save(path.test_data)
+        local_test_dataset.to_pickle(path.test_data)

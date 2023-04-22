@@ -7,13 +7,17 @@ import numpy as np
 import pandas as pd
 from scipy.stats import spearmanr
 import torch
+import torch.linalg
 from torchmetrics.functional import spearman_corrcoef
+torch.inverse(torch.ones((0, 0), device='cuda:0'))
 
 from pymoo.algorithms.soo.nonconvex.brkga import BRKGA
 from pymoo.core.duplicate import ElementwiseDuplicateElimination
 from pymoo.core.problem import ElementwiseProblem
 from pymoo.optimize import minimize
 from pymoo.termination.default import DefaultSingleObjectiveTermination
+from pymoo.core.problem import StarmapParallelization
+from multiprocessing.pool import ThreadPool
 
 from .FeatureEvaluator import ImportanceEvaluator, CorrelationEvaluator
 
@@ -99,7 +103,7 @@ class ImportanceSplitter:
 
 class CorrelationSplitter:
 
-    def __init__(self, num_parties: int, evaluator: CorrelationEvaluator = None, seed=None, gpu_id=None):
+    def __init__(self, num_parties: int, evaluator: CorrelationEvaluator = None, seed=None, gpu_id=None, n_jobs=1):
         """
         Split a 2D dataset by feature correlation (assuming the features are equally important).
         :param num_parties: [int] number of parties
@@ -117,6 +121,9 @@ class CorrelationSplitter:
         else:
             self.device = torch.device("cpu")
             warnings.warn("The device is set to CPU. This may cause the performance to be slow.")
+
+        self.pool = ThreadPool(n_jobs)
+        self.runner = StarmapParallelization(self.pool.starmap)
 
         # split result of the last call of fit()
         self.corr = None
@@ -146,8 +153,8 @@ class CorrelationSplitter:
 
     # Nested class for BRKGA solver: max-mcor problem definition
     class CorrMaxProblem(ElementwiseProblem):
-        def __init__(self, corr, n_features_on_party, evaluator: CorrelationEvaluator = None):
-            super().__init__(n_var=corr.shape[1], n_obj=1, n_constr=0, xl=-1, xu=1)
+        def __init__(self, corr, n_features_on_party, evaluator: CorrelationEvaluator = None, runner=None):
+            super().__init__(n_var=corr.shape[1], n_obj=1, n_constr=0, xl=-1, xu=1, elementwise_runner=runner)
             self.corr = corr
             self.n_features_on_party = n_features_on_party
             self.evaluator = evaluator
@@ -168,8 +175,8 @@ class CorrelationSplitter:
 
     # Nested class for BRKGA solver: min-mcor problem definition
     class CorrMinProblem(ElementwiseProblem):
-        def __init__(self, corr, n_features_on_party, evaluator: CorrelationEvaluator = None):
-            super().__init__(n_var=corr.shape[1], n_obj=1, n_constr=0, xl=-1, xu=1)
+        def __init__(self, corr, n_features_on_party, evaluator: CorrelationEvaluator = None, runner=None):
+            super().__init__(n_var=corr.shape[1], n_obj=1, n_constr=0, xl=-1, xu=1, elementwise_runner=runner)
             self.corr = corr
             self.n_features_on_party = n_features_on_party
             self.evaluator = evaluator
@@ -190,8 +197,9 @@ class CorrelationSplitter:
 
     # Nested class for BRKGA solver: best-matched-mcor problem definition
     class CorrBestMatchProblem(ElementwiseProblem):
-        def __init__(self, corr, n_features_on_party, beta, min_mcor, max_mcor, evaluator: CorrelationEvaluator = None):
-            super().__init__(n_var=corr.shape[1], n_obj=1, n_constr=0, xl=-1, xu=1)
+        def __init__(self, corr, n_features_on_party, beta, min_mcor, max_mcor, evaluator: CorrelationEvaluator = None,
+                     runner=None):
+            super().__init__(n_var=corr.shape[1], n_obj=1, n_constr=0, xl=-1, xu=1, elementwise_runner=runner)
             assert min_mcor < max_mcor, f"min_mcor {min_mcor} should be smaller than max_mcor {max_mcor}"
             self.corr = corr
             self.n_features_on_party = n_features_on_party
@@ -269,7 +277,7 @@ class CorrelationSplitter:
         if verbose:
             print("Calculating the min mcor of the overall correlation score...")
         res_min = minimize(
-            self.CorrMinProblem(self.corr, self.n_features_on_party, evaluator=self.evaluator),
+            self.CorrMinProblem(self.corr, self.n_features_on_party, evaluator=self.evaluator, runner=self.runner),
             algorithm,
             ('n_gen', n_gen),
             seed=self.seed,
@@ -280,7 +288,7 @@ class CorrelationSplitter:
         if verbose:
             print("Calculating the max mcor of the overall correlation score...")
         res_max = minimize(
-            self.CorrMaxProblem(self.corr, self.n_features_on_party, evaluator=self.evaluator),
+            self.CorrMaxProblem(self.corr, self.n_features_on_party, evaluator=self.evaluator, runner=self.runner),
             algorithm,
             ('n_gen', n_gen),
             seed=self.seed,
@@ -327,7 +335,7 @@ class CorrelationSplitter:
         # target_mcor = beta * max_mcor + (1 - beta) * min_mcor
         res_beta = minimize(
             self.CorrBestMatchProblem(self.corr, self.n_features_on_party, beta, self.min_mcor, self.max_mcor,
-                                      evaluator=self.evaluator),
+                                      evaluator=self.evaluator, runner=self.runner),
             algorithm,
             termination,
             seed=self.seed,

@@ -109,7 +109,7 @@ class SplitMLP(nn.Module):
         #                                               self.get_grad_size_in_cut_layer(grad_output, comm_logger,
         #                                                                               primary_party, i))
 
-    def forward(self, Xs: list[torch.Tensor]):
+    def forward(self, Xs):
         """
         Forward propagation of the model.
 
@@ -258,16 +258,23 @@ def evaluate(model, test_loader, metric_fn: Callable, gpu_id=0, n_classes=1):
 if __name__ == '__main__':
     # arguments
     parser = argparse.ArgumentParser()
-    parser.add_argument('--epochs', '-e', type=int, default=50)
     parser.add_argument('--gpu', '-g', type=int, default=0,
                         help="GPU ID. Set to None if you want to use CPU")
-    parser.add_argument('--lr', '-lr', type=float, default=3e-4)
 
-    # parameters for Importance Splitter and Correlation Splitter
+    # parameters for dataset
+    parser.add_argument('--dataset', '-d', type=str, default='covtype',
+                        help="dataset to use. Supported datasets: [covtype, msd, higgs]")
+    parser.add_argument('--n_parties', '-p', type=int, default=4,
+                        help="number of parties. Should be >=2")
+    parser.add_argument('--primary_party', '-pp', type=int, default=0,
+                        help="primary party. Should be in [0, n_parties-1]")
     parser.add_argument('--splitter', '-sp', type=str, default='imp')
     parser.add_argument('--weights', '-w', type=float, default=1, help="weights for the ImportanceSplitter")
     parser.add_argument('--beta', '-b', type=float, default=1, help="beta for the CorrelationSplitter")
 
+    # parameters for model
+    parser.add_argument('--epochs', '-e', type=int, default=50)
+    parser.add_argument('--lr', '-lr', type=float, default=3e-4)
     parser.add_argument('--weight_decay', '-wd', type=float, default=1e-5)
     parser.add_argument('--batch_size', '-bs', type=int, default=128)
     parser.add_argument('--n_classes', '-c', type=int, default=7,
@@ -275,12 +282,6 @@ if __name__ == '__main__':
                              ">=3 for multi-class classification")
     parser.add_argument('--metric', '-m', type=str, default='acc',
                         help="metric to evaluate the model. Supported metrics: [accuracy, rmse]")
-    parser.add_argument('--dataset', '-d', type=str, default='covtype',
-                        help="dataset to use. Supported datasets: [covtype, msd, higgs]")
-    parser.add_argument('--n_parties', '-p', type=int, default=4,
-                        help="number of parties. Should be >=2")
-    parser.add_argument('--primary_party', '-pp', type=int, default=0,
-                        help="primary party. Should be in [0, n_parties-1]")
     parser.add_argument('--seed', '-s', type=int, default=0, help="random seed")
     args = parser.parse_args()
 
@@ -308,6 +309,9 @@ if __name__ == '__main__':
         task = 'bin-cls'
         loss_fn = nn.BCELoss()
         out_dim = 1
+        # make sure
+        train_dataset.scale_y_()
+        test_dataset.scale_y_()
     else:  # multi-class classification
         task = 'multi-cls'
         loss_fn = nn.CrossEntropyLoss()

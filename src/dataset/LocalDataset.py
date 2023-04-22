@@ -5,6 +5,7 @@ import pickle
 import numpy as np
 import pandas
 import pandas as pd
+from sklearn.preprocessing import MinMaxScaler
 
 import torch
 from torch.utils.data import Dataset
@@ -80,6 +81,33 @@ class LocalDataset(Dataset):
         with open(pickle_path, 'rb') as f:
             return pickle.load(f)
         
-    def save(self, path):
+    def to_pickle(self, path):
         with open(path, 'wb') as f:
             pickle.dump(self, f)
+
+    def to_csv(self, path, type='raw'):
+        assert type in ['raw', 'fedtree'], "type should be in ['raw', 'fedtree']"
+        if type == 'raw':
+            df = pd.DataFrame(np.concatenate([self.X, self.y.reshape(-1, 1)], axis=1))
+            df.to_csv(path, header=False, index=False)
+        elif type == 'fedtree':
+            if self.key is None:
+                raise ValueError("key is None. FedTree requires key column.")
+            if len(self.key.shape) != 1 and self.key.shape[1] != 1:
+                raise ValueError("FedTree does not support multi-dimensional key.")
+            columns = ['id', 'y'] + [f'x{i}' for i in range(self.X.shape[1])]
+            df = pd.DataFrame(np.concatenate([self.key.reshape(-1, 1), self.y.reshape(-1, 1), self.X], axis=1),
+                              columns=columns)
+            df.to_csv(path, index=False)
+        else:
+            raise NotImplementedError(f"CSV type {type} is not implemented.")
+
+
+    def scale_y_(self, lower=0, upper=1):
+        """
+        Scale the label to [lower, upper]
+        """
+        if self.y is None:
+            return
+        scaler = MinMaxScaler(feature_range=(lower, upper))
+        self.y = scaler.fit_transform(self.y.reshape(-1, 1)).reshape(-1)
