@@ -7,6 +7,7 @@ from sklearn.preprocessing import MinMaxScaler
 from sklearn.datasets import make_classification, load_svmlight_file
 from sklearn.utils.extmath import randomized_svd
 import xgboost as xgb
+import pandas as pd
 
 import torch
 
@@ -69,57 +70,59 @@ print("Data loaded.")
 #
 # print(score)
 
-print("Calculate the standard variance of singular values")
-evaluator = CorrelationEvaluator()
-evaluator.fit([X])
+# print("Calculate the standard variance of singular values")
+# evaluator = CorrelationEvaluator()
+# evaluator.fit([X])
+#
+#
+# start = time.time()
+# corr_mtx = torch.tensor(evaluator.corr, dtype=torch.float32).to('cuda:0')
+# EX2 = np.linalg.norm(evaluator.corr, ord='fro') ** 2 / min(evaluator.corr.shape)    # faster
+# EX = torch.norm(corr_mtx, p='nuc') / min(evaluator.corr.shape)
+# EX = EX.cpu().numpy()
+# var = np.sqrt(EX2 - EX ** 2)
+# print(f"Singular value variance: {var}, time cost: {time.time() - start}s")
+#
+#
+# start = time.time()
+# corr_mtx = torch.tensor(evaluator.corr, dtype=torch.float32).to('cuda:0')
+# _, s, _ = torch.svd_lowrank(corr_mtx, q=400, niter=4)
+# s = s.cpu().numpy()
+# shape = min(evaluator.corr.shape)
+# s_append_zero = np.concatenate((s, np.zeros(shape - s.shape[0])))
+# var1 = np.std(s_append_zero)
+# print(f"Singular value variance: {var1}, time cost: {time.time() - start}s")
+#
+#
+# print("Calculate the standard variance of singular values")
+# evaluator = CorrelationEvaluator()
+# evaluator.fit([X])
+#
+# start = time.time()
+# _, s, _ = randomized_svd(evaluator.corr, n_components=400, n_oversamples=10,
+#                          n_iter=4, random_state=0)
+# shape = min(evaluator.corr.shape)
+# s_append_zero = np.concatenate((s, np.zeros(shape - s.shape[0])))
+# var1 = np.std(s_append_zero)
+# print(f"Singular value variance: {var1}, time cost: {time.time() - start}s")
+#
+#
+#
+# start = time.time()
+# # EX2 = np.matrix.trace(evaluator.corr.T @ evaluator.corr) / evaluator.corr.shape[1]
+# EX2 = np.linalg.norm(evaluator.corr, ord='fro') ** 2 / min(evaluator.corr.shape)    # faster
+# end = time.time()
+# print(f"Time cost: {end - start}s")
+# E2X = (np.linalg.norm(evaluator.corr, ord='nuc') / min(evaluator.corr.shape)) ** 2
+# var = np.sqrt(EX2 - E2X)
+# print(f"Singular value variance: {var}, time cost: {time.time() - start}s")
+#
+# start = time.time()
+# score_var = evaluator.mcor_singular(evaluator.corr)
+# print(f"Singular value variance: {score_var}, time cost: {time.time() - start}s")
+#
+#
 
-
-start = time.time()
-corr_mtx = torch.tensor(evaluator.corr, dtype=torch.float32).to('cuda:0')
-EX2 = np.linalg.norm(evaluator.corr, ord='fro') ** 2 / min(evaluator.corr.shape)    # faster
-EX = torch.norm(corr_mtx, p='nuc') / min(evaluator.corr.shape)
-EX = EX.cpu().numpy()
-var = np.sqrt(EX2 - EX ** 2)
-print(f"Singular value variance: {var}, time cost: {time.time() - start}s")
-
-
-start = time.time()
-corr_mtx = torch.tensor(evaluator.corr, dtype=torch.float32).to('cuda:0')
-_, s, _ = torch.svd_lowrank(corr_mtx, q=400, niter=4)
-s = s.cpu().numpy()
-shape = min(evaluator.corr.shape)
-s_append_zero = np.concatenate((s, np.zeros(shape - s.shape[0])))
-var1 = np.std(s_append_zero)
-print(f"Singular value variance: {var1}, time cost: {time.time() - start}s")
-
-
-print("Calculate the standard variance of singular values")
-evaluator = CorrelationEvaluator()
-evaluator.fit([X])
-
-start = time.time()
-_, s, _ = randomized_svd(evaluator.corr, n_components=400, n_oversamples=10,
-                         n_iter=4, random_state=0)
-shape = min(evaluator.corr.shape)
-s_append_zero = np.concatenate((s, np.zeros(shape - s.shape[0])))
-var1 = np.std(s_append_zero)
-print(f"Singular value variance: {var1}, time cost: {time.time() - start}s")
-
-
-
-start = time.time()
-# EX2 = np.matrix.trace(evaluator.corr.T @ evaluator.corr) / evaluator.corr.shape[1]
-EX2 = np.linalg.norm(evaluator.corr, ord='fro') ** 2 / min(evaluator.corr.shape)    # faster
-end = time.time()
-print(f"Time cost: {end - start}s")
-E2X = (np.linalg.norm(evaluator.corr, ord='nuc') / min(evaluator.corr.shape)) ** 2
-var = np.sqrt(EX2 - E2X)
-print(f"Singular value variance: {var}, time cost: {time.time() - start}s")
-
-start = time.time()
-score_var = evaluator.mcor_singular(evaluator.corr)
-print(f"Singular value variance: {score_var}, time cost: {time.time() - start}s")
-
-
-
+higgs = pd.read_csv("data/syn/higgs/higgs.csv")
+pass
 
