@@ -24,7 +24,7 @@ from utils.logger import CommLogger
 
 class SplitMLP(nn.Module):
     def __init__(self, local_input_channels, local_hidden_channels, agg_hidden_channels,
-                 out_activation=nn.Sigmoid, comm_logger=None, primary_party=0, **kwargs):
+                 out_activation=None, comm_logger=None, primary_party=0, **kwargs):
         """
         SplitNN that all layers are fully connected layers (MLP).
         Usage: (f is the number of features)
@@ -138,7 +138,10 @@ class SplitMLP(nn.Module):
 
         agg_input = torch.cat(local_outputs, dim=1)
         agg_output = self.agg_mlp(agg_input)
-        return self.out_activation(agg_output)
+        if self.out_activation is not None:
+            return self.out_activation(agg_output)
+        else:
+            return agg_output
 
     # @staticmethod
     # def get_grad_size_in_cut_layer(grad_out, comm_logger: CommLogger, primary_party, secondary_party):
@@ -168,7 +171,7 @@ class SplitMLP(nn.Module):
 
 # train the model
 def fit(model, optimizer, loss_fn, metric_fn, train_loader, test_loader=None, epochs=10, gpu_id=0, n_classes=1,
-        task='bin-cls'):
+        task='bin-cls', scheduler=None):
     device = get_device_from_gpu_id(gpu_id)
     model.to(device)
     for epoch in range(epochs):
@@ -203,6 +206,9 @@ def fit(model, optimizer, loss_fn, metric_fn, train_loader, test_loader=None, ep
         print(f"Epoch: {epoch}, Train Loss: {total_loss / len(train_loader)}, Train Score: {train_score}")
         print(f"Communication size: in = {model.comm_logger.in_comm}, out = {model.comm_logger.out_comm}")
         model.comm_logger.save_log()
+
+        if scheduler is not None:
+            scheduler.step()
 
         if test_loader is not None:
             model.eval()
@@ -274,7 +280,7 @@ if __name__ == '__main__':
 
     # parameters for model
     parser.add_argument('--epochs', '-e', type=int, default=50)
-    parser.add_argument('--lr', '-lr', type=float, default=3e-4)
+    parser.add_argument('--lr', '-lr', type=float, default=1e-3)
     parser.add_argument('--weight_decay', '-wd', type=float, default=1e-5)
     parser.add_argument('--batch_size', '-bs', type=int, default=128)
     parser.add_argument('--n_classes', '-c', type=int, default=7,
@@ -302,6 +308,7 @@ if __name__ == '__main__':
         task = 'reg'
         loss_fn = nn.MSELoss()
         out_dim = 1
+        out_activation = nn.Sigmoid()
         if args.metric == 'acc':  # if metric is accuracy, change it to rmse
             args.metric = 'rmse'
             warnings.warn("Metric is changed to rmse for regression task")
@@ -309,21 +316,24 @@ if __name__ == '__main__':
         task = 'bin-cls'
         loss_fn = nn.BCELoss()
         out_dim = 1
-        # make sure
+        out_activation = nn.Sigmoid()
+        # make sure the labels are in [0, 1]
         train_dataset.scale_y_()
         test_dataset.scale_y_()
     else:  # multi-class classification
         task = 'multi-cls'
         loss_fn = nn.CrossEntropyLoss()
         out_dim = args.n_classes
+        out_activation = nn.Softmax(dim=1)
 
-    model = SplitMLP(train_dataset.local_input_channels, [[50]] * 4, [100, out_dim], out_activation=nn.Sigmoid(),
+    model = SplitMLP(train_dataset.local_input_channels, [[100, 100]] * 4, [200, out_dim], out_activation=nn.Sigmoid(),
                      comm_logger=comm_logger, primary_party=args.primary_party)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.5)
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=4)
     test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=4)
 
     metric_fn = get_metric_from_str(args.metric)
 
     fit(model, optimizer, loss_fn, metric_fn, train_loader, epochs=args.epochs, gpu_id=args.gpu,
-        n_classes=args.n_classes, test_loader=test_loader, task=task)
+        n_classes=args.n_classes, test_loader=test_loader, task=task, scheduler=scheduler)

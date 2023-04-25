@@ -158,7 +158,10 @@ class CorrelationEvaluator:
         # zero warning". We ignore this warning and replace NaN in corr with 0.
         with np.errstate(divide='ignore', invalid='ignore'):
             corr = spearmanr(X).correlation
-        corr = np.nan_to_num(corr, nan=0)
+        if np.isnan(corr).all():    # in case all features are constant
+            corr = np.zeros((X.shape[1], X.shape[1]))
+        else:
+            corr = np.nan_to_num(corr, nan=0)
         if self.gpu_id is not None:
             corr = torch.from_numpy(corr).float().to(self.device)
         return corr
@@ -299,7 +302,7 @@ class CorrelationEvaluator:
         :return:
         """
         if algo == 'auto':
-            if min(corr.shape) < 1000:
+            if min(corr.shape) < 500:
                 if self.gpu_id is not None:
                     return self.mcor_singular_exact_gpu(corr)
                 else:

@@ -26,7 +26,7 @@ def split_vertical_data(X, num_parties,
                         splitter='imp',
                         weights=1,
                         beta=1,
-                        corr_function='spearman',
+                        corr_func='spearmanr',
                         seed=None,
                         gpu_id=None,
                         n_jobs=1,
@@ -48,7 +48,7 @@ def split_vertical_data(X, num_parties,
         weights for the ImportanceSplitter
     beta: float
         beta for the CorrelationSplitter
-    corr_function: str
+    corr_func: str
         correlation function for the CorrelationSplitter, should be in ['pearson']
     seed: int
         random seed
@@ -68,12 +68,6 @@ def split_vertical_data(X, num_parties,
     # check parameters
     assert isinstance(X, np.ndarray), "data should be a numpy array"
     assert splitter in ['imp', 'corr'], "splitter should be in ['imp', 'corr']"
-    if corr_function == 'spearman':
-        corr_func = None    # use default spearmanr
-    else:
-        raise NotImplementedError(f"Correlation function {corr_function} is not implemented. corr_function should be in"
-                                  f" ['spearman']")
-    assert num_parties > 0, "num_parties should be greater than 0"
     assert weights is None or np.all(np.array(weights) > 0), "weights should be positive"
 
     # split data
@@ -104,9 +98,9 @@ if __name__ == '__main__':
     parser.add_argument('--verbose', '-v', action='store_true')
     args = parser.parse_args()
 
-    if args.n_jobs > 1:
+    if args.jobs > 1:
         warnings.warn("Multi-threading has bugs. Set n_jobs=1 instead.")
-        args.n_jobs = 1
+        args.jobs = 1
 
     if args.verbose:
         print(f"Loading dataset from {args.dataset_path}...")

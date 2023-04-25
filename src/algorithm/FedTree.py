@@ -91,7 +91,7 @@ if __name__ == '__main__':
         n_class = 2
     else:
         objective = 'multi:softmax'
-        metric = 'merror'
+        metric = 'default'
         n_class = args.n_classes
 
     # define model cache
