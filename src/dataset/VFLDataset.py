@@ -24,10 +24,10 @@ class VFLDataset:
     defined in the subclass.
     """
 
-    def __init__(self, num_parties: int, local_datasets: list, primary_party_id: int = 0):
+    def __init__(self, num_parties: int, local_datasets, primary_party_id: int = 0):
         """
         :param num_parties: number of parties
-        :param local_datasets: local datasets of each party (list of LocalDataset)
+        :param local_datasets: local datasets of each party (list of LocalDataset or None)
         :param primary_party_id: primary party (the party with labels) id, should be in range of [0, num_parties)
         """
 
@@ -41,10 +41,11 @@ class VFLDataset:
         """
         Check if the data is valid
         """
-        assert len(self.local_datasets) == self.num_parties, "The number of parties should be the same as the " \
-                                                                 "number of local datasets "
-        for local_dataset in self.local_datasets:
-            assert isinstance(local_dataset, LocalDataset), "local_dataset should be an instance of LocalDataset"
+        if self.local_datasets is not None:
+            assert len(self.local_datasets) == self.num_parties, \
+                "The number of parties should be the same as the number of local datasets "
+            for local_dataset in self.local_datasets:
+                assert isinstance(local_dataset, LocalDataset), "local_dataset should be an instance of LocalDataset"
 
         assert 0 <= self.primary_party_id < self.num_parties, "primary_party_id should be in range of [0, num_parties)"
 

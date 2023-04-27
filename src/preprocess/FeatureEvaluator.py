@@ -502,7 +502,7 @@ class CorrelationEvaluator:
         """
         self.n_features_on_party = self.check_data(Xs)
         self.corr = self.corr_func(np.concatenate(Xs, axis=1))
-        self.corr = np.nan_to_num(self.corr, nan=0)
+        self.corr = torch.nan_to_num(self.corr, nan=0)
 
     def evaluate(self):
         """
@@ -511,7 +511,7 @@ class CorrelationEvaluator:
         """
         return self.overall_corr_score(self.corr, self.n_features_on_party)
 
-    def visualize(self, save_path=None, value=None):
+    def visualize(self, save_path=None, value=None, cmap='cividis'):
         """
         Visualize the correlation matrix.
         :param save_path: [str|None] path to save the figure. If None, the figure will be shown.
@@ -525,7 +525,7 @@ class CorrelationEvaluator:
         else:
             corr = self.corr
         plt.figure(figsize=(10, 10))
-        plt.imshow(corr, cmap='plasma')
+        plt.imshow(corr, cmap=cmap)
         plt.colorbar()
         if value is not None:
             plt.title(f"Correlation matrix (inter-mcor={value:.2f})")

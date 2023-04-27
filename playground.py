@@ -122,7 +122,7 @@ print("Data loaded.")
 # print(f"Singular value variance: {score_var}, time cost: {time.time() - start}s")
 #
 #
-
-higgs = pd.read_csv("data/syn/higgs/higgs.csv")
-pass
+#
+# higgs = pd.read_csv("data/syn/higgs/higgs.csv")
+# pass
 

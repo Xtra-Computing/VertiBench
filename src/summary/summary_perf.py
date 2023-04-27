@@ -2,6 +2,9 @@ import os
 import sys
 import argparse
 import re
+import warnings
+
+import numpy as np
 
 import pathlib
 
@@ -34,7 +37,11 @@ def get_log_paths(out_dir, dataset, split='imp', ws=None, bs=None, seed=0):
     return log_paths
 
 
-def get_score_splitnn(file_path):
+def get_score_splitnn(file_path, skip_no_file=False):
+    if skip_no_file and not os.path.exists(file_path):
+        warnings.warn(f"File {file_path} does not exist. Return np.nan.")
+        return np.nan
+
     with open(file_path, 'r') as f:
         lines = f.readlines()
         last_line = lines[-1]
@@ -46,12 +53,17 @@ def get_score_splitnn(file_path):
     return score
 
 
-def get_score_fedtree(file_path):
+def get_score_fedtree(file_path, skip_no_file=False):
     """
     extract the last match of score from the log file.
-    :param file_path:
+    :param file_path: the path of the log file
+    :param skip_no_file: if True, return nan if the file does not exist. Otherwise, raise FileNotFoundError.
     :return:
     """
+    if skip_no_file and not os.path.exists(file_path):
+        warnings.warn(f"File {file_path} does not exist. Return np.nan.")
+        return np.nan
+
     with open(file_path, 'r') as f:
         lines = f.readlines()
 
@@ -68,19 +80,19 @@ def get_score_fedtree(file_path):
                 break
     return score
 
-def get_scores_splitnn(out_dir, dataset, split='imp', ws=None, bs=None, seed=0):
+def get_scores_splitnn(out_dir, dataset, split='imp', ws=None, bs=None, seed=0, skip_no_file=False):
     log_paths = get_log_paths(out_dir, dataset, split=split, ws=ws, bs=bs, seed=seed)
     scores = []
     for log_path in log_paths:
-        score = get_score_splitnn(log_path)
+        score = get_score_splitnn(log_path, skip_no_file=skip_no_file)
         scores.append(score)
     return scores
 
-def get_scores_fedtree(out_dir, dataset, split='imp', ws=None, bs=None, seed=0):
+def get_scores_fedtree(out_dir, dataset, split='imp', ws=None, bs=None, seed=0, skip_no_file=False):
     log_paths = get_log_paths(out_dir, dataset, split=split, ws=ws, bs=bs, seed=seed)
     scores = []
     for log_path in log_paths:
-        score = get_score_fedtree(log_path)
+        score = get_score_fedtree(log_path, skip_no_file=skip_no_file)
         scores.append(score)
     return scores
 
@@ -91,7 +103,12 @@ if __name__ == '__main__':
     parser.add_argument('--split', '-sp', type=str, default='imp', help="splitter type, should be in ['imp', 'corr']")
     parser.add_argument('--weights', '-w', type=list, default=None, help="weights for the ImportanceSplitter")
     parser.add_argument('--beta', '-b', type=list, default=None, help="beta for the CorrelationSplitter")
-    parser.add_argument('--seed', '-s', type=int, default=0)
+    parser.add_argument('--seed', '-s', type=int, default=None,
+                        help=f"Seed value. By default, seed is None, which means a range of seeds [0, n_seed) will be "
+                             f"used instead of a specific seed <seed>.")
+    parser.add_argument('--n-seed', '-ns', type=int, default=None,
+                        help=f"The number of seeds. Seeds are in range [0, n_seed). By default, n_seed is None, which"
+                             f"means a specific seed <seed> will be used instead of a range of seeds.")
     parser.add_argument('--algo', '-a', type=str, default='splitnn',
                         help="algorithm, should be in ['splitnn', 'fedtree']")
     args = parser.parse_args()
@@ -99,14 +116,34 @@ if __name__ == '__main__':
     if args.dataset is None:
         args.dataset = pathlib.Path(args.log_dir).name
 
-    if args.algo == 'splitnn':
-        scores = get_scores_splitnn(args.log_dir, args.dataset,
-                                    split=args.split, ws=args.weights, bs=args.beta, seed=args.seed)
-    elif args.algo == 'fedtree':
-        scores = get_scores_fedtree(args.log_dir, args.dataset,
-                                    split=args.split, ws=args.weights, bs=args.beta, seed=args.seed)
-    else:
-        raise NotImplementedError(f"Algorithm {args.algo} is not implemented. "
-                                  f"Algorithm should be in ['splitnn', 'fedtree']")
-    for s in scores:
-        print(f"{s:.4f}\t", end='')
+    if args.seed is not None and args.n_seed is None:
+        if args.algo == 'splitnn':
+            scores = get_scores_splitnn(args.log_dir, args.dataset,
+                                        split=args.split, ws=args.weights, bs=args.beta, seed=args.seed)
+        elif args.algo == 'fedtree':
+            scores = get_scores_fedtree(args.log_dir, args.dataset,
+                                        split=args.split, ws=args.weights, bs=args.beta, seed=args.seed)
+        else:
+            raise NotImplementedError(f"Algorithm {args.algo} is not implemented. "
+                                      f"Algorithm should be in ['splitnn', 'fedtree']")
+        for s in scores:
+            print(f"{s:.4f}\t", end='')
+    elif args.seed is None and args.n_seed is not None:
+        scores_summary = []
+        for seed in range(args.n_seed):
+            if args.algo == 'splitnn':
+                scores = get_scores_splitnn(args.log_dir, args.dataset, skip_no_file=True,
+                                           split=args.split, ws=args.weights, bs=args.beta, seed=seed)
+            elif args.algo == 'fedtree':
+                scores = get_scores_fedtree(args.log_dir, args.dataset, skip_no_file=True,
+                                           split=args.split, ws=args.weights, bs=args.beta, seed=seed)
+            else:
+                raise NotImplementedError(f"Algorithm {args.algo} is not implemented. "
+                                          f"Algorithm should be in ['splitnn', 'fedtree']")
+            scores_summary.append(scores)
+        scores_summary = np.array(scores_summary)
+        # if there are nan values, ignore them when calculating mean and std
+        scores_mean = np.nanmean(scores_summary, axis=0)
+        scores_std = np.nanstd(scores_summary, axis=0)
+        for m, s in zip(scores_mean, scores_std):
+            print(f"{m:.4f}±{s:.4f}\t", end='')
