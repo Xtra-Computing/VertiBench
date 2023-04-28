@@ -92,10 +92,18 @@ class SplitMLP(nn.Module):
 
         self.local_mlps = nn.ModuleList()
         for i in range(self.n_parties):
-            local_mlp = MLP(local_input_channels[i], local_hidden_channels[i], **kwargs)
+            if local_input_channels[i] == 0:
+                # if the party has no data, then the local MLP directly outputs zero dimension tensor
+                local_mlp = nn.Identity()
+            else:
+                local_mlp = MLP(local_input_channels[i], local_hidden_channels[i], **kwargs)
             self.local_mlps.append(local_mlp)
 
-        self.cut_dim = sum([channel[-1] for channel in local_hidden_channels])  # the dimension of the cut layer
+        valid_hidden_channels = []
+        for i in range(self.n_parties):
+            if local_input_channels[i] != 0:
+                valid_hidden_channels.append(local_hidden_channels[i])
+        self.cut_dim = sum([channel[-1] for channel in valid_hidden_channels])  # the dimension of the cut layer
         self.agg_mlp = MLP(self.cut_dim, agg_hidden_channels, **kwargs)
 
         self.comm_logger = comm_logger
@@ -324,7 +332,7 @@ if __name__ == '__main__':
         task = 'multi-cls'
         loss_fn = nn.CrossEntropyLoss()
         out_dim = args.n_classes
-        out_activation = nn.Softmax(dim=1)
+        out_activation = None
 
     model = SplitMLP(train_dataset.local_input_channels, [[100, 100]] * 4, [200, out_dim], out_activation=nn.Sigmoid(),
                      comm_logger=comm_logger, primary_party=args.primary_party)
