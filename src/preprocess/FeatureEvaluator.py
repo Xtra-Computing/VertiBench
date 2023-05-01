@@ -511,9 +511,12 @@ class CorrelationEvaluator:
         """
         return self.overall_corr_score(self.corr, self.n_features_on_party)
 
-    def visualize(self, save_path=None, value=None, cmap='cividis'):
+    def visualize(self, save_path=None, value=None, cmap='cividis', map_func=None):
         """
         Visualize the correlation matrix.
+        :param map_func: [callable|None|str] function to map the correlation matrix. If None, the correlation matrix will
+        be used directly.
+        :param cmap: [str] color map for the figure
         :param save_path: [str|None] path to save the figure. If None, the figure will be shown.
         :param value: [float|None] The overall correlation score to be shown on the figure. If None, the score will not
         be shown.
@@ -524,8 +527,30 @@ class CorrelationEvaluator:
             corr = self.corr.cpu().numpy()
         else:
             corr = self.corr
+
+        if map_func is None:
+            map_corr = corr
+        elif isinstance(map_func, str):
+            # corr is in [-1, 1]
+            if map_func == 'sigmoid':
+                map_corr = 1 / (1 + np.exp(-corr))
+            elif map_func == 'tanh':
+                map_corr = np.tanh(corr)
+            elif map_func == 'relu':
+                map_corr = np.maximum(0, corr)
+            elif map_func == 'log':
+                map_corr = np.log(corr + 1)
+            elif map_func == 'exp':
+                map_corr = np.exp(corr)
+            else:
+                raise ValueError(f"Unknown map function {map_func} (str)")
+        elif callable(map_func):
+            map_corr = map_func(corr)
+        else:
+            raise ValueError(f"Unknown map function {map_func} (callable)")
+
         plt.figure(figsize=(10, 10))
-        plt.imshow(corr, cmap=cmap)
+        plt.imshow(map_corr, cmap=cmap)
         plt.colorbar()
         if value is not None:
             plt.title(f"Correlation matrix (inter-mcor={value:.2f})")

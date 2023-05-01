@@ -106,7 +106,7 @@ if __name__ == '__main__':
                             learning_rate=args.lr, data_format=args.data_format, metric=metric)
     os.makedirs("algo/FedTree/conf", exist_ok=True)
     ratio = args.weights if args.splitter == 'imp' else args.beta
-    conf_path = f"algo/FedTree/conf/fedtree-vertical-{args.dataset}-{args.n_parties}-{args.splitter}-{ratio}.conf"
+    conf_path = f"algo/FedTree/conf/fedtree-vertical-{args.dataset}-{args.n_parties}-{args.splitter}-{ratio}-{args.seed}.conf"
     pathlib.Path(conf_path).write_text(conf_content)
 
     # train model by invoking the FedTree binary

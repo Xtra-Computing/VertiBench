@@ -142,3 +142,8 @@ websocket-client==1.5.1
 widgetsnbextension==4.0.5
 wrapt==1.15.0
 xgboost==1.7.4
+
+nvitop~=1.1.2
+tifffile~=2023.4.12
+opencv-python~=4.7.0.72
+fedtree~=1.0.5
