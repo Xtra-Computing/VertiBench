@@ -1,3 +1,5 @@
+import argparse
+
 import torch
 from torch.utils.data import Dataset
 import os
@@ -9,13 +11,13 @@ from tqdm import tqdm
 
 
 class SatelliteDataset(Dataset):
-    def __init__(self):
-        self.base_path = "/data/zhaomin/VertiBench/data/real/satellite/uncompressed/"
-        self.X = []
-        self.y = []
+    def __init__(self, base_path, X=None, y=None):
+        self.base_path = base_path
+        self.X = X if X is not None else []
+        self.y = y if y is not None else []
         self.POIs = {}  # for future use
 
-        # total 3927 avaliable unique locations.
+        # total 3927 available unique locations.
 
         # each location have 1 high-res image, and 1 low-res image
         # POI: point of interest
@@ -25,80 +27,8 @@ class SatelliteDataset(Dataset):
         # RGB: RGB stands for red, green, blue, and it refers to satellite images that have three bands corresponding to those colors. RGB images are often used for visual interpretation, as they mimic what our eyes see. They can also be used for tasks such as vegetation analysis and land cover classification.
         # RGBN: RGBN stands for red, green, blue, near-infrared, and it refers to satellite images that have four bands corresponding to those colors (including the near-infrared band). Near-infrared is outside the range of human vision, but it can be useful for tasks such as vegetation analysis and land cover classification, as it provides information about plant health and moisture content.
 
-        errorlist = [
-            "UNHCR-COGs026823",
-            "UNHCR-UKRs002527",
-            "Landcover-1237604",
-            "Landcover-1155257",
-            "Landcover-1156642",
-            "Landcover-774737",
-            "Landcover-763170",
-            "Landcover-775854",
-            "UNHCR-BFAs004227",
-            "Landcover-1219520",
-            "Landcover-1188668",
-            "Landcover-770906",
-            "Landcover-1148426",
-            "UNHCR-CMRs032284",
-            "UNHCR-GNBs001117",
-            "Landcover-73253",
-            "Landcover-1246064",
-            "Landcover-775904",
-            "Landcover-1288052",
-            "Landcover-485752",
-            "Landcover-1175132",
-            "UNHCR-CAFs033240",
-            "Landcover-1198471",
-            "Landcover-1293888",
-            "Landcover-1230525",
-            "Landcover-1241829",
-            "Landcover-555595",
-            "Landcover-459218",
-            "Landcover-491311",
-            "Landcover-1280733",
-            "UNHCR-BFAs004488",
-            "Landcover-496866",
-            "Landcover-775398",
-            "Landcover-1111029",
-            "UNHCR-NGAs035508",
-            "Landcover-1119043",
-            "Landcover-776473",
-            "Landcover-777209",
-            "Landcover-1149712",
-            "Landcover-772811",
-            "Landcover-488862",
-            "Landcover-1260028",
-            "Landcover-1596540",
-            "UNHCR-SLEs002046",
-            "Landcover-1166403",
-            "UNHCR-NGAs035978",
-            "UNHCR-IRQs010053",
-            "UNHCR-CMRs004022",
-            "UNHCR-NGAs035805",
-            "Landcover-772258",
-            "Landcover-1347210",
-            "UNHCR-PAKs003492",
-            "Landcover-769816",
-            "UNHCR-BFAs004511",
-            "Landcover-1168954",
-            "Landcover-1183915",
-            "Landcover-777291",
-            "UNHCR-NGAs026841",
-            "Landcover-774795",
-            "UNHCR-SSDs003967",
-            "UNHCR-NGAs037066",
-            "UNHCR-BFAs004460",
-            "Landcover-1255307",
-            "Landcover-1229102",
-            "Landcover-693606",
-            "UNHCR-TCDs015426",
-            "ASMSpotter-1-1-1",
-        ]
-
         dirs = os.listdir(self.base_path)
         for aoi in tqdm(dirs):
-            if aoi in errorlist:
-                continue
             if (
                 "Amnesty" in aoi or "ASMSpotter" in aoi
             ):  # for the 9 AOIs around each POI
@@ -120,7 +50,6 @@ class SatelliteDataset(Dataset):
 
             self.X.append(lowres)  # 16 low-res images
             self.y.append(highres)  # 1 high-res image
-        print("Error list:", errorlist)
 
     def read_tiff(self, fpath: str) -> list:
         res = []
@@ -144,8 +73,8 @@ class SatelliteDataset(Dataset):
     def __getitem__(self, idx):
         X = []
         for i in range(16):
-            X.append(self.read_tiff(self.base_path + self.X[idx][i]))
-        y = self.read_tiff(self.base_path + self.y[idx])
+            X.append(self.read_tiff(os.path.join(self.base_path, self.X[idx][i])))
+        y = self.read_tiff(os.path.join(self.base_path, self.y[idx]))
 
         X = (
             torch.tensor(np.array(X), dtype=torch.uint8).view(16, 13, 158, 158).detach()
@@ -157,7 +86,11 @@ class SatelliteDataset(Dataset):
 
 
 if __name__ == "__main__":
-    satellite = SatelliteDataset()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-b", "--base_path", type=str, default="data/real/satellite/clean")
+    args = parser.parse_args()
+
+    satellite = SatelliteDataset(args.base_path)
     print("Total", len(satellite), "locations")
     for i in tqdm(range(0, len(satellite))):
         dirs = os.listdir(satellite.base_path)
