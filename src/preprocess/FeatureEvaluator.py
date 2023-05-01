@@ -489,7 +489,13 @@ class CorrelationEvaluator:
         """
         self.n_features_on_party = self.check_data(Xs)
         start_time = time.time()
-        self.corr = self.corr_func(np.concatenate(Xs, axis=1))
+        Xs = list(Xs)
+        if torch.is_tensor(Xs[0]):
+            self.corr = self.corr_func(torch.cat(Xs, dim=1))
+        elif isinstance(Xs[0], np.ndarray):
+            self.corr = self.corr_func(np.concatenate(Xs, axis=1))
+        else:
+            raise ValueError(f"Xs should be either np.ndarray or torch.Tensor, but got {type(Xs[0])}")
         self.corr = torch.nan_to_num(self.corr, nan=0)
         end_time = time.time()
         print(f"Correlation calculation time: {end_time - start_time:.2f}s")

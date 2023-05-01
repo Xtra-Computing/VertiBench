@@ -1,4 +1,5 @@
 import argparse
+from concurrent.futures import ProcessPoolExecutor as Executor, as_completed
 
 import torch
 from torch.utils.data import Dataset
@@ -84,6 +85,30 @@ class SatelliteDataset(Dataset):
         )  # 4 channel RGBN image 1054x1054
         return X, y
 
+    @torch.no_grad()
+    def sample(self, n_samples=None, ratio=None, seed=None, n_jobs=1):
+        if seed is not None:
+            np.random.seed(seed)
+        if n_samples is None:
+            assert ratio is not None and 0 < ratio < 1
+            n_samples = int(len(self) * ratio)
+        indices = np.random.choice(len(self), n_samples, replace=False)
+
+        with Executor(n_jobs) as executor, tqdm(total=n_samples) as pbar:
+            futures = []
+            for idx in indices:
+                futures.append(executor.submit(self.__getitem__, idx))
+
+            Xs = torch.zeros((0, 16, 13, 158, 158), dtype=torch.uint8)
+            ys = torch.zeros((0, 4, 1054, 1054), dtype=torch.uint8)
+            for future in as_completed(futures):
+                X, y = future.result()
+                Xs = torch.cat((Xs, X.unsqueeze(0)), dim=0)
+                ys = torch.cat((ys, y.unsqueeze(0)), dim=0)
+                pbar.update(1)
+        return Xs, ys
+
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -92,10 +117,12 @@ if __name__ == "__main__":
 
     satellite = SatelliteDataset(args.base_path)
     print("Total", len(satellite), "locations")
-    for i in tqdm(range(0, len(satellite))):
-        dirs = os.listdir(satellite.base_path)
-
-        X, y = satellite[i]
-        # X.shape == (16, 13, 158, 158). 16 parties, each party has 13 channel 158x158 image
-        # y.shape == (4, 1054, 1054). 4 channel RGBN image 1054x1054
-        print(i, X.shape, y.shape) 
+    X, y = satellite.sample(n_samples=10, n_jobs=10)
+    print(X.shape, y.shape)
+    # for i in tqdm(range(0, len(satellite))):
+    #     dirs = os.listdir(satellite.base_path)
+    #
+    #     X, y = satellite[i]
+    #     # X.shape == (16, 13, 158, 158). 16 parties, each party has 13 channel 158x158 image
+    #     # y.shape == (4, 1054, 1054). 4 channel RGBN image 1054x1054
+    #     print(i, X.shape, y.shape)
