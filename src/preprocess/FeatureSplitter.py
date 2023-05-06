@@ -49,9 +49,10 @@ class ImportanceSplitter:
         """
         assert len(self.weights) == self.num_parties, "The length of weights should equal to the number of parties"
 
-    def split_indices(self, X):
+    def split_indices(self, X, allow_empty_party=False):
         """
         Split the indices of X by feature importance.
+        :param allow_empty_party: [bool] whether to allow parties with zero features
         :param X: [np.ndarray] 2D dataset
         :return: [list] list of indices of each party
         """
@@ -59,25 +60,45 @@ class ImportanceSplitter:
         # All the features share the same ratio
         probs = np.random.dirichlet(self.weights)
 
-        # Assign each feature to a party
-        party_to_feature = [[] for _ in range(self.num_parties)]
-        party_ids = np.random.choice(self.num_parties, size=X.shape[1], p=probs)
-        for feature_id in range(X.shape[1]):
-            party_id = party_ids[feature_id]
-            party_to_feature[party_id].append(feature_id)
+        if allow_empty_party:
+            # Assign each feature to a party
+            party_to_feature = [[] for _ in range(self.num_parties)]
+            party_ids = np.random.choice(self.num_parties, size=X.shape[1], p=probs)
+            for feature_id in range(X.shape[1]):
+                party_id = party_ids[feature_id]
+                party_to_feature[party_id].append(feature_id)
+        else:
+            # uniform-randomly select one feature for each party
+            preassigned_feature_ids = np.random.choice(X.shape[1], size=self.num_parties, replace=False)
+            party_to_feature = [[feature_id] for feature_id in preassigned_feature_ids]
+
+            # Assign the remaining features to the parties
+            preassigned_feature_id_set = set(preassigned_feature_ids)
+            party_ids = np.random.choice(self.num_parties, size=X.shape[1], p=probs)
+            for feature_id in range(X.shape[1]):
+                if feature_id not in preassigned_feature_id_set:
+                    party_id = party_ids[feature_id]
+                    party_to_feature[party_id].append(feature_id)
+
+            # no empty party
+            assert np.count_nonzero([len(party) for party in party_to_feature]) == self.num_parties, \
+                "There should be no empty party"
+            assert np.sum([len(party) for party in party_to_feature]) == X.shape[1], \
+                "The number of features should be the same as the number of columns of X"
 
         return party_to_feature
 
-    def split(self, X, *args, indices=None):
+    def split(self, X, *args, indices=None, allow_empty_party=False):
         """
         Split X by feature importance.
+        :param allow_empty_party: [bool] whether to allow parties with zero features
         :param X: [np.ndarray] 2D dataset
         :param args: [np.ndarray] other datasets with the same number of columns as X (X1, X2, ..., Xn)
         :param indices: [list] indices of features on each party. If not given, the indices will be generated randomly.
         :return: (X1, X2, ..., Xn) [np.ndarray, ...] where n is the number of parties
         """
         if indices is None:
-            party_to_feature = self.split_indices(X)
+            party_to_feature = self.split_indices(X, allow_empty_party=allow_empty_party)
         else:
             party_to_feature = indices
 

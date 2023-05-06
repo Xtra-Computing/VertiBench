@@ -332,9 +332,9 @@ if __name__ == '__main__':
         task = 'multi-cls'
         loss_fn = nn.CrossEntropyLoss()
         out_dim = args.n_classes
-        out_activation = None
+        out_activation = None   # No need for softmax since it is included in CrossEntropyLoss
 
-    model = SplitMLP(train_dataset.local_input_channels, [[100, 100]] * 4, [200, out_dim], out_activation=nn.Sigmoid(),
+    model = SplitMLP(train_dataset.local_input_channels, [[100, 100]] * 4, [200, out_dim], out_activation=out_activation,
                      comm_logger=comm_logger, primary_party=args.primary_party)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.5)

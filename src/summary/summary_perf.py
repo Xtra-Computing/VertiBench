@@ -11,7 +11,7 @@ import pathlib
 
 def get_log_paths(out_dir, dataset, split='imp', ws=None, bs=None, seed=0):
     if ws is None:
-        ws = [0.1, 0.3, 0.6, 1.0]
+        ws = [0.1, 1.0, 10.0, 100.0]
     if bs is None:
         bs = [0.0, 0.3, 0.6, 1.0]
 
@@ -78,31 +78,44 @@ def get_score_fedtree(file_path, skip_no_file=False):
             if match:
                 score = float(match[0][2])
                 break
+        if score is None:
+            warnings.warn(f"File {file_path} does not contain score. Return np.nan.")
+            score = np.nan
     return score
 
-def get_scores_splitnn(out_dir, dataset, split='imp', ws=None, bs=None, seed=0, skip_no_file=False):
-    log_paths = get_log_paths(out_dir, dataset, split=split, ws=ws, bs=bs, seed=seed)
-    scores = []
-    for log_path in log_paths:
-        score = get_score_splitnn(log_path, skip_no_file=skip_no_file)
-        scores.append(score)
-    return scores
+def get_scores_dataset(out_dir, dataset, split='imp', ws=None, bs=None, seed=0, skip_no_file=False,
+                       get_score_func=get_score_splitnn):
+    if isinstance(split, str):
+        log_paths = get_log_paths(out_dir, dataset, split=split, ws=ws, bs=bs, seed=seed)
+        scores = []
+        for log_path in log_paths:
+            score = get_score_splitnn(log_path, skip_no_file=skip_no_file)
+            scores.append(score)
+        return scores
+    elif isinstance(split, list):
+        scores = []
+        for s in split:
+            log_paths = get_log_paths(out_dir, dataset, split=s, ws=ws, bs=bs, seed=seed)
+            for log_path in log_paths:
+                score = get_score_func(log_path, skip_no_file=skip_no_file)
+                scores.append(score)
+        return scores
 
+def get_scores_splitnn(out_dir, dataset, split='imp', ws=None, bs=None, seed=0, skip_no_file=False):
+    return get_scores_dataset(out_dir, dataset, split=split, ws=ws, bs=bs, seed=seed, skip_no_file=skip_no_file,
+                                get_score_func=get_score_splitnn)
 def get_scores_fedtree(out_dir, dataset, split='imp', ws=None, bs=None, seed=0, skip_no_file=False):
-    log_paths = get_log_paths(out_dir, dataset, split=split, ws=ws, bs=bs, seed=seed)
-    scores = []
-    for log_path in log_paths:
-        score = get_score_fedtree(log_path, skip_no_file=skip_no_file)
-        scores.append(score)
-    return scores
+    return get_scores_dataset(out_dir, dataset, split=split, ws=ws, bs=bs, seed=seed, skip_no_file=skip_no_file,
+                                get_score_func=get_score_fedtree)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('log_dir', type=str)
     parser.add_argument('--dataset', '-d', type=str, default=None)
-    parser.add_argument('--split', '-sp', type=str, default='imp', help="splitter type, should be in ['imp', 'corr']")
-    parser.add_argument('--weights', '-w', type=list, default=None, help="weights for the ImportanceSplitter")
-    parser.add_argument('--beta', '-b', type=list, default=None, help="beta for the CorrelationSplitter")
+    parser.add_argument('--split', '-sp', type=str, nargs='+', default=['imp', 'corr'],
+                        help="splitter, should be in ['imp', 'corr']")
+    parser.add_argument('--weights', '-w', type=float, default=None, help="weights for the ImportanceSplitter")
+    parser.add_argument('--beta', '-b', type=float, default=None, help="beta for the CorrelationSplitter")
     parser.add_argument('--seed', '-s', type=int, default=None,
                         help=f"Seed value. By default, seed is None, which means a range of seeds [0, n_seed) will be "
                              f"used instead of a specific seed <seed>.")

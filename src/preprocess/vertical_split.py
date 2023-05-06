@@ -73,7 +73,7 @@ def split_vertical_data(X, num_parties,
     # split data
     if splitter == 'imp':
         splitter = ImportanceSplitter(num_parties, weights, seed)
-        Xs = splitter.split(X)
+        Xs = splitter.split(X, allow_empty_party=False)     # by default, we do not allow empty parties
     elif splitter == 'corr':
         evaluator = CorrelationEvaluator(corr_func=corr_func, gpu_id=gpu_id)
         splitter = CorrelationSplitter(num_parties, evaluator, seed, gpu_id=gpu_id, n_jobs=n_jobs)

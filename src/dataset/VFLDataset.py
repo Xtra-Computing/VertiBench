@@ -12,7 +12,7 @@ from sklearn.preprocessing import MinMaxScaler
 import torch
 from torch.utils.data import Dataset
 
-from .LocalDataset import LocalDataset
+from dataset.LocalDataset import LocalDataset
 from utils import PartyPath
 from preprocess.FeatureEvaluator import CorrelationEvaluator, ImportanceEvaluator
 
