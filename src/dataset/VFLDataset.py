@@ -43,9 +43,9 @@ class VFLDataset:
         """
         if self.local_datasets is not None:
             assert len(self.local_datasets) == self.num_parties, \
-                "The number of parties should be the same as the number of local datasets "
+                f"The number of parties {self.num_parties} should be the same as the number of local datasets {len(self.local_datasets)}"
             for local_dataset in self.local_datasets:
-                assert isinstance(local_dataset, LocalDataset), "local_dataset should be an instance of LocalDataset"
+                assert isinstance(local_dataset, LocalDataset), f"local_dataset should be an instance of LocalDataset, got {type(local_dataset)}"
 
         assert 0 <= self.primary_party_id < self.num_parties, "primary_party_id should be in range of [0, num_parties)"
 
@@ -124,6 +124,19 @@ class VFLAlignedDataset(VFLDataset, Dataset):
 
         return Xs, y
 
+    @property
+    def local_input_channels(self):
+        return [local_dataset.X.shape[1] for local_dataset in self.local_datasets]
+
+    def scale_y_(self, lower=0, upper=1):
+        for local_dataset in self.local_datasets:
+            local_dataset.scale_y_(lower, upper)
+
+
+class VFLSynAlignedDataset(VFLAlignedDataset):
+    def __init__(self, num_parties: int, local_datasets, primary_party_id: int = 0):
+        super().__init__(num_parties, local_datasets, primary_party_id)
+
     @classmethod
     def from_pickle(cls, dir: str, dataset: str, n_parties, primary_party_id: int = 0,
                     splitter: str = 'imp', weight: float = 1, beta: float = 1, seed: int = 0, type='train'):
@@ -164,14 +177,6 @@ class VFLAlignedDataset(VFLDataset, Dataset):
                 local_dataset.y = None
             local_datasets.append(local_dataset)
         return cls(n_parties, local_datasets, primary_party_id)
-
-    @property
-    def local_input_channels(self):
-        return [local_dataset.X.shape[1] for local_dataset in self.local_datasets]
-
-    def scale_y_(self, lower=0, upper=1):
-        for local_dataset in self.local_datasets:
-            local_dataset.scale_y_(lower, upper)
 
     def visualize_corr(self, corr_func='spearmanr', gpu_id=None, output_score=True):
         """

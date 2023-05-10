@@ -26,8 +26,21 @@ class LocalDataset(Dataset):
         :param y: labels (1d array)
         """
         self.key = key
-        self.X = X.astype(np.float32)
-        self.y = y.astype(np.float32) if y is not None else None
+        if isinstance(X, np.ndarray):
+            self.X = X.astype(np.float32)
+        elif isinstance(X, torch.Tensor):
+            self.X = X.float()
+        else:
+            raise TypeError("X should be either np.ndarray or torch.Tensor")
+
+        if y is None:
+            self.y = None
+        elif isinstance(y, np.ndarray):
+            self.y = y.astype(np.float32)
+        elif isinstance(y, torch.Tensor):
+            self.y = y.float() if y is not None else None
+        else:
+            raise TypeError("y should be either np.ndarray or torch.Tensor")
 
         self.check_shape()
 

@@ -13,6 +13,7 @@ from torchmetrics.functional import spearman_corrcoef
 import shap
 from joblib import Parallel, delayed
 import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
 
 class ImportanceEvaluator:
     """
@@ -517,7 +518,7 @@ class CorrelationEvaluator:
         """
         return self.overall_corr_score(self.corr, self.n_features_on_party)
 
-    def visualize(self, save_path=None, value=None, cmap='cividis', map_func=None):
+    def visualize(self, save_path=None, value=None, cmap='cividis', map_func=np.abs, fontsize=16):
         """
         Visualize the correlation matrix.
         :param map_func: [callable|None|str] function to map the correlation matrix. If None, the correlation matrix will
@@ -548,6 +549,8 @@ class CorrelationEvaluator:
                 map_corr = np.log(corr + 1)
             elif map_func == 'exp':
                 map_corr = np.exp(corr)
+            elif map_func == 'abs':
+                map_corr = np.abs(corr)
             else:
                 raise ValueError(f"Unknown map function {map_func} (str)")
         elif callable(map_func):
@@ -555,15 +558,49 @@ class CorrelationEvaluator:
         else:
             raise ValueError(f"Unknown map function {map_func} (callable)")
 
-        plt.figure(figsize=(10, 10))
+        plt.rc('font', size=fontsize)
+
+        fig, ax = plt.subplots(figsize=(10, 9))
         plt.imshow(map_corr, cmap=cmap)
         plt.colorbar()
+
+        # add the axis to indicate the party
+        n_features_on_party = np.asarray(self.n_features_on_party)
+        n_parties = len(n_features_on_party)
+        xtick_major = np.cumsum([0] + self.n_features_on_party)
+        xtick_minor = (xtick_major[1:] + xtick_major[:-1]) / 2
+        xtick_labels = [f"Party {i + 1}" for i in range(n_parties)]
+
+        ax.set_xticks(xtick_major, minor=False)
+        ax.set_yticks(xtick_major, minor=False)
+        ax.set_xticklabels(xtick_labels, minor=True)
+        ax.set_yticklabels(xtick_labels, minor=True)
+        ax.xaxis.set_minor_locator(ticker.FixedLocator(xtick_minor))
+        ax.yaxis.set_minor_locator(ticker.FixedLocator(xtick_minor))
+        ax.tick_params(axis='both', which='minor', length=0)
+        ax.tick_params(axis='x', which='minor', rotation=90)
+        ax.tick_params(axis='x', which='major', rotation=90)
+
+        fig.tight_layout()
+
+        # move title up
         if value is not None:
-            plt.title(f"Correlation matrix (inter-mcor={value:.2f})")
+            plt.title(f"Correlation matrix (inter-mcor={value:.2f})", y=1.05)
         else:
-            plt.title("Correlation matrix")
+            plt.title("Correlation matrix", y=1.05)
         if save_path is None:
             plt.show()
         else:
             plt.savefig(save_path)
             plt.close()
+
+
+if __name__ == '__main__':
+    from sklearn.datasets import load_svmlight_file
+    X, y = load_svmlight_file("data/real/vehicle/processed/vehicle.libsvm")
+    X = X.toarray()
+
+    Xs = [X[:, :50], X[:, 50:]]
+    evaluator = CorrelationEvaluator(gpu_id=0)
+    score = evaluator.fit_evaluate(Xs)
+    evaluator.visualize(value=score, cmap="afmhot")

@@ -9,15 +9,17 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 from torchvision.ops import MLP
+from torchvision.models import resnet18, resnet34
+from torchsummaryX import summary
 
 from tqdm import tqdm
 
 # add src to python path
-sys.path.append(os.path.join(os.path.dirname(__file__), '.'))
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
 from dataset import LocalDataset, VFLRawDataset, VFLAlignedDataset
+from dataset.VFLDataset import VFLSynAlignedDataset
+from dataset.SatelliteDataset import SatelliteDataset, SatelliteGlobalDataset
 from utils import get_device_from_gpu_id, get_metric_from_str, PartyPath
 from utils.logger import CommLogger
 
@@ -177,11 +179,49 @@ class SplitMLP(nn.Module):
     #             comm_logger.comm(primary_party, secondary_party, size)
 
 
+class SplitResNet(nn.Module):
+    def __init__(self, n_parties, agg_hidden=None, out_activation=None):
+        super().__init__()
+        self.n_parties = n_parties
+        self.out_activation = out_activation
+        self.local_resnet_list = nn.ModuleList()
+        local_output_dims = []
+        for i in range(self.n_parties):
+            resnet = resnet18(weights=None)
+            local_output_dims.append(resnet.fc.in_features)
+            resnet.fc = nn.Identity()
+            resnet.conv1 = nn.Conv2d(13, 64, 7, stride=2, padding=3, bias=False)
+            self.local_resnet_list.append(resnet)
+        self.cut_dim = sum(local_output_dims)
+        if agg_hidden is None:
+            self.agg_hidden = [100, 1]
+        else:
+            self.agg_hidden = agg_hidden
+        self.agg_mlp = MLP(self.cut_dim, self.agg_hidden)
+        if out_activation is None:
+            self.out_activation = nn.Identity()
+        else:
+            self.out_activation = out_activation
+
+    def forward(self, Xs):
+        local_outputs = [resnet(Xi) for resnet, Xi in zip(self.local_resnet_list, Xs)]
+        agg_input = torch.cat(local_outputs, dim=1)
+        agg_output = self.agg_mlp(agg_input)
+        return self.out_activation(agg_output)
+
+
+
+
 # train the model
 def fit(model, optimizer, loss_fn, metric_fn, train_loader, test_loader=None, epochs=10, gpu_id=0, n_classes=1,
         task='bin-cls', scheduler=None):
     device = get_device_from_gpu_id(gpu_id)
     model.to(device)
+
+    sample_Xs = next(iter(train_loader))[0]
+    sample_Xs = [Xi.to(device) for Xi in sample_Xs]
+    summary(model, sample_Xs)
+
     for epoch in range(epochs):
         model.train()
         train_pred_y = train_y = torch.zeros([0, 1], device=device)
@@ -212,8 +252,9 @@ def fit(model, optimizer, loss_fn, metric_fn, train_loader, test_loader=None, ep
 
         train_score = metric_fn(train_y.data.cpu().numpy(), train_pred_y.data.cpu().numpy())
         print(f"Epoch: {epoch}, Train Loss: {total_loss / len(train_loader)}, Train Score: {train_score}")
-        print(f"Communication size: in = {model.comm_logger.in_comm}, out = {model.comm_logger.out_comm}")
-        model.comm_logger.save_log()
+        if hasattr(model, 'comm_logger'):
+            print(f"Communication size: in = {model.comm_logger.in_comm}, out = {model.comm_logger.out_comm}")
+            model.comm_logger.save_log()
 
         if scheduler is not None:
             scheduler.step()
@@ -277,7 +318,7 @@ if __name__ == '__main__':
 
     # parameters for dataset
     parser.add_argument('--dataset', '-d', type=str, default='covtype',
-                        help="dataset to use. Supported datasets: [covtype, msd, higgs]")
+                        help="dataset to use.")
     parser.add_argument('--n_parties', '-p', type=int, default=4,
                         help="number of parties. Should be >=2")
     parser.add_argument('--primary_party', '-pp', type=int, default=0,
@@ -303,13 +344,25 @@ if __name__ == '__main__':
                      args.seed, fmt='pkl', comm_root="log")
     comm_logger = CommLogger(args.n_parties, path.comm_log)
 
-    # Note: torch.compile() in torch 2.0 significantly harms the accuracy with a few improvements in speed.
-    train_dataset = VFLAlignedDataset.from_pickle(f"data/syn/{args.dataset}", f'{args.dataset}', 4,
-                                                  primary_party_id=args.primary_party, splitter=args.splitter,
-                                                  weight=args.weights, beta=args.beta, seed=args.seed, type='train')
-    test_dataset = VFLAlignedDataset.from_pickle(f"data/syn/{args.dataset}", f'{args.dataset}', 4,
-                                                 primary_party_id=args.primary_party, splitter=args.splitter,
-                                                 weight=args.weights, beta=args.beta, seed=args.seed, type='test')
+    if args.dataset == 'satellite':
+        # global_dataset = SatelliteGlobalDataset("data/real/satellite/clean")
+        # train_global_dataset, test_global_dataset = global_dataset.split_train_test(test_ratio=0.2, seed=args.seed)
+        # train_dataset = SatelliteDataset.from_global(train_global_dataset, n_jobs=20)
+        # test_dataset = SatelliteDataset.from_global(test_global_dataset, n_jobs=20)
+        # train_dataset.to_pickle("data/real/satellite/cache", 'train')
+        # test_dataset.to_pickle("data/real/satellite/cache", 'test')
+        train_dataset = SatelliteDataset.from_pickle("data/real/satellite/cache", 'train', n_parties=args.n_parties, n_jobs=8)
+        test_dataset = SatelliteDataset.from_pickle("data/real/satellite/cache", 'test', n_parties=args.n_parties, n_jobs=8)
+        model = 'resnet'
+    else:
+        # Note: torch.compile() in torch 2.0 significantly harms the accuracy with little speed up
+        train_dataset = VFLSynAlignedDataset.from_pickle(f"data/syn/{args.dataset}", f'{args.dataset}', 4,
+                                                      primary_party_id=args.primary_party, splitter=args.splitter,
+                                                      weight=args.weights, beta=args.beta, seed=args.seed, type='train')
+        test_dataset = VFLSynAlignedDataset.from_pickle(f"data/syn/{args.dataset}", f'{args.dataset}', 4,
+                                                     primary_party_id=args.primary_party, splitter=args.splitter,
+                                                     weight=args.weights, beta=args.beta, seed=args.seed, type='test')
+        model = 'mlp'
 
     # create the model
     if args.n_classes == 1:  # regression
@@ -334,8 +387,11 @@ if __name__ == '__main__':
         out_dim = args.n_classes
         out_activation = None   # No need for softmax since it is included in CrossEntropyLoss
 
-    model = SplitMLP(train_dataset.local_input_channels, [[100, 100]] * 4, [200, out_dim], out_activation=out_activation,
-                     comm_logger=comm_logger, primary_party=args.primary_party)
+    if model == 'mlp':
+        model = SplitMLP(train_dataset.local_input_channels, [[100, 100]] * args.n_parties, [200, out_dim],
+                         out_activation=out_activation, comm_logger=comm_logger, primary_party=args.primary_party)
+    elif model == 'resnet':
+        model = SplitResNet(args.n_parties, agg_hidden=[1000, out_dim], out_activation=out_activation)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.5)
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=4)
