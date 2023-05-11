@@ -190,7 +190,7 @@ class SplitResNet(nn.Module):
             resnet = resnet18(weights=None)
             local_output_dims.append(resnet.fc.in_features)
             resnet.fc = nn.Identity()
-            resnet.conv1 = nn.Conv2d(13, 64, 7, stride=2, padding=3, bias=False)
+            resnet.conv1 = nn.Conv2d(13, 64, 9, stride=2, padding=3, bias=False)
             self.local_resnet_list.append(resnet)
         self.cut_dim = sum(local_output_dims)
         if agg_hidden is None:

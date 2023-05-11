@@ -61,24 +61,30 @@ if __name__ == '__main__':
                         help="number of classes. 1 for regression, 2 for binary classification,"
                              ">=3 for multi-class classification")
     parser.add_argument('--max-depth', '-md', type=int, default=6, help="maximum depth of the tree")
+    parser.add_argument('--real', '-rd', action='store_true', default=False,
+                        help="use real dataset. If not set, use synthetic dataset")
     parser.add_argument('--seed', '-s', type=int, default=0, help="random seed")
 
     args = parser.parse_args()
 
     # arg.root was relative to the current working directory, but the binary requires a path relative to the binary
-    root_path = os.path.join( args.root, args.dataset)
+    root_path = os.path.join(args.root, args.dataset)
 
     # load dataset (prepare paths)
     train_dataset_paths = []
     test_dataset_paths = []
     for i in range(args.n_parties):
-        data_path_base = os.path.join(root_path, args.dataset)
-        train_dataset_paths.append(PartyPath(data_path_base, n_parties=args.n_parties, party_id=i,
-                                       splitter=args.splitter, weight=args.weights, beta=args.beta, seed=args.seed,
-                                       fmt='csv').data('train'))
-        test_dataset_paths.append(PartyPath(data_path_base, n_parties=args.n_parties, party_id=i,
-                                        splitter=args.splitter, weight=args.weights, beta=args.beta, seed=args.seed,
-                                        fmt='csv').data('test'))
+        if args.real:
+            train_dataset_paths.append(os.path.join(args.root, f"{args.dataset}_party{i}_train.csv"))
+            test_dataset_paths.append(os.path.join(args.root, f"{args.dataset}_party{i}_test.csv"))
+        else:
+            data_path_base = os.path.join(root_path, args.dataset)
+            train_dataset_paths.append(PartyPath(data_path_base, n_parties=args.n_parties, party_id=i,
+                                           splitter=args.splitter, weight=args.weights, beta=args.beta, seed=args.seed,
+                                           fmt='csv').data('train'))
+            test_dataset_paths.append(PartyPath(data_path_base, n_parties=args.n_parties, party_id=i,
+                                            splitter=args.splitter, weight=args.weights, beta=args.beta, seed=args.seed,
+                                            fmt='csv').data('test'))
 
     # get objective according to task
     if args.n_classes == 1:

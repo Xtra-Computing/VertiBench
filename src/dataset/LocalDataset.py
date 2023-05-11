@@ -99,18 +99,26 @@ class LocalDataset(Dataset):
             pickle.dump(self, f)
 
     def to_csv(self, path, type='raw'):
+        # flatten >=2 dimensional X (e.g. image) to 1 dimensional
+        if len(self.X.shape) > 2:
+            X = self.X.reshape(self.X.shape[0], -1)
+
         assert type in ['raw', 'fedtree'], "type should be in ['raw', 'fedtree']"
         if type == 'raw':
-            df = pd.DataFrame(np.concatenate([self.X, self.y.reshape(-1, 1)], axis=1))
+            df = pd.DataFrame(np.concatenate([X, self.y.reshape(-1, 1)], axis=1))
             df.to_csv(path, header=False, index=False)
         elif type == 'fedtree':
             if self.key is None:
                 raise ValueError("key is None. FedTree requires key column.")
             if len(self.key.shape) != 1 and self.key.shape[1] != 1:
                 raise ValueError("FedTree does not support multi-dimensional key.")
-            columns = ['id', 'y'] + [f'x{i}' for i in range(self.X.shape[1])]
-            df = pd.DataFrame(np.concatenate([self.key.reshape(-1, 1), self.y.reshape(-1, 1), self.X], axis=1),
-                              columns=columns)
+            if self.y is None:
+                columns = ['id'] + [f'x{i}' for i in range(X.shape[1])]
+                df = pd.DataFrame(np.concatenate([self.key.reshape(-1, 1), X], axis=1), columns=columns)
+            else:
+                columns = ['id', 'y'] + [f'x{i}' for i in range(X.shape[1])]
+                df = pd.DataFrame(np.concatenate([self.key.reshape(-1, 1), self.y.reshape(-1, 1), X], axis=1),
+                                  columns=columns)
             df.to_csv(path, index=False)
         else:
             raise NotImplementedError(f"CSV type {type} is not implemented.")
