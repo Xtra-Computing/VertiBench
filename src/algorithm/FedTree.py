@@ -61,7 +61,7 @@ if __name__ == '__main__':
                         help="number of classes. 1 for regression, 2 for binary classification,"
                              ">=3 for multi-class classification")
     parser.add_argument('--max-depth', '-md', type=int, default=6, help="maximum depth of the tree")
-    parser.add_argument('--real', '-rd', action='store_true', default=False,
+    parser.add_argument('--is-real', '-rd', action='store_true', default=False,
                         help="use real dataset. If not set, use synthetic dataset")
     parser.add_argument('--seed', '-s', type=int, default=0, help="random seed")
 
@@ -74,7 +74,7 @@ if __name__ == '__main__':
     train_dataset_paths = []
     test_dataset_paths = []
     for i in range(args.n_parties):
-        if args.real:
+        if args.is_real:
             train_dataset_paths.append(os.path.join(args.root, f"{args.dataset}_party{i}_train.csv"))
             test_dataset_paths.append(os.path.join(args.root, f"{args.dataset}_party{i}_test.csv"))
         else:
@@ -111,8 +111,11 @@ if __name__ == '__main__':
                             objective=objective, n_classes=n_class, n_trees=args.epochs, depth=args.max_depth,
                             learning_rate=args.lr, data_format=args.data_format, metric=metric)
     os.makedirs("algo/FedTree/conf", exist_ok=True)
-    ratio = args.weights if args.splitter == 'imp' else args.beta
-    conf_path = f"algo/FedTree/conf/fedtree-vertical-{args.dataset}-{args.n_parties}-{args.splitter}-{ratio}-{args.seed}.conf"
+    if args.is_real:
+        conf_path = f"algo/FedTree/conf/fedtree-vertical-{args.dataset}-{args.n_parties}-{args.seed}.conf"
+    else:
+        ratio = args.weights if args.splitter == 'imp' else args.beta
+        conf_path = f"algo/FedTree/conf/fedtree-vertical-{args.dataset}-{args.n_parties}-{args.splitter}-{ratio}-{args.seed}.conf"
     pathlib.Path(conf_path).write_text(conf_content)
 
     # train model by invoking the FedTree binary

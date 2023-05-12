@@ -37,6 +37,11 @@ def get_log_paths(out_dir, dataset, split='imp', ws=None, bs=None, seed=0):
     return log_paths
 
 
+def get_real_log_path(out_dir, dataset, seed=0):
+    file_path = os.path.join(out_dir, dataset, f"{dataset}_seed{seed}.txt")
+    return file_path
+
+
 def get_score_splitnn(file_path, skip_no_file=False):
     if skip_no_file and not os.path.exists(file_path):
         warnings.warn(f"File {file_path} does not exist. Return np.nan.")
@@ -83,17 +88,23 @@ def get_score_fedtree(file_path, skip_no_file=False):
             score = np.nan
     return score
 
-def get_scores_dataset(out_dir, dataset, split='imp', ws=None, bs=None, seed=0, skip_no_file=False,
+def get_scores_dataset(out_dir, dataset, split='imp', ws=None, bs=None, seed=0, skip_no_file=False, is_real=False,
                        get_score_func=get_score_splitnn):
+    if is_real:
+        # split does not matter if a dataset is real
+        log_path = get_real_log_path(out_dir, dataset, seed=seed)
+        score = get_score_func(log_path, skip_no_file=skip_no_file)
+        return [score]
+
+    scores = []
     if isinstance(split, str):
         log_paths = get_log_paths(out_dir, dataset, split=split, ws=ws, bs=bs, seed=seed)
-        scores = []
+
         for log_path in log_paths:
-            score = get_score_splitnn(log_path, skip_no_file=skip_no_file)
+            score = get_score_func(log_path, skip_no_file=skip_no_file)
             scores.append(score)
         return scores
     elif isinstance(split, list):
-        scores = []
         for s in split:
             log_paths = get_log_paths(out_dir, dataset, split=s, ws=ws, bs=bs, seed=seed)
             for log_path in log_paths:
@@ -101,12 +112,12 @@ def get_scores_dataset(out_dir, dataset, split='imp', ws=None, bs=None, seed=0, 
                 scores.append(score)
         return scores
 
-def get_scores_splitnn(out_dir, dataset, split='imp', ws=None, bs=None, seed=0, skip_no_file=False):
+def get_scores_splitnn(out_dir, dataset, split='imp', ws=None, bs=None, seed=0, skip_no_file=False, is_real=False):
     return get_scores_dataset(out_dir, dataset, split=split, ws=ws, bs=bs, seed=seed, skip_no_file=skip_no_file,
-                                get_score_func=get_score_splitnn)
-def get_scores_fedtree(out_dir, dataset, split='imp', ws=None, bs=None, seed=0, skip_no_file=False):
+                                get_score_func=get_score_splitnn, is_real=is_real)
+def get_scores_fedtree(out_dir, dataset, split='imp', ws=None, bs=None, seed=0, skip_no_file=False, is_real=False):
     return get_scores_dataset(out_dir, dataset, split=split, ws=ws, bs=bs, seed=seed, skip_no_file=skip_no_file,
-                                get_score_func=get_score_fedtree)
+                                get_score_func=get_score_fedtree, is_real=is_real)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -124,6 +135,7 @@ if __name__ == '__main__':
                              f"means a specific seed <seed> will be used instead of a range of seeds.")
     parser.add_argument('--algo', '-a', type=str, default='splitnn',
                         help="algorithm, should be in ['splitnn', 'fedtree']")
+    parser.add_argument('--is-real', '-rd', action='store_true', help="whether the dataset is real or synthetic")
     args = parser.parse_args()
 
     if args.dataset is None:
@@ -131,10 +143,10 @@ if __name__ == '__main__':
 
     if args.seed is not None and args.n_seed is None:
         if args.algo == 'splitnn':
-            scores = get_scores_splitnn(args.log_dir, args.dataset,
+            scores = get_scores_splitnn(args.log_dir, args.dataset, is_real=args.is_real,
                                         split=args.split, ws=args.weights, bs=args.beta, seed=args.seed)
         elif args.algo == 'fedtree':
-            scores = get_scores_fedtree(args.log_dir, args.dataset,
+            scores = get_scores_fedtree(args.log_dir, args.dataset, is_real=args.is_real,
                                         split=args.split, ws=args.weights, bs=args.beta, seed=args.seed)
         else:
             raise NotImplementedError(f"Algorithm {args.algo} is not implemented. "
@@ -145,10 +157,10 @@ if __name__ == '__main__':
         scores_summary = []
         for seed in range(args.n_seed):
             if args.algo == 'splitnn':
-                scores = get_scores_splitnn(args.log_dir, args.dataset, skip_no_file=True,
+                scores = get_scores_splitnn(args.log_dir, args.dataset, skip_no_file=True, is_real=args.is_real,
                                            split=args.split, ws=args.weights, bs=args.beta, seed=seed)
             elif args.algo == 'fedtree':
-                scores = get_scores_fedtree(args.log_dir, args.dataset, skip_no_file=True,
+                scores = get_scores_fedtree(args.log_dir, args.dataset, skip_no_file=True, is_real=args.is_real,
                                            split=args.split, ws=args.weights, bs=args.beta, seed=seed)
             else:
                 raise NotImplementedError(f"Algorithm {args.algo} is not implemented. "
