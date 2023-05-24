@@ -55,8 +55,8 @@ class WideDataset(VFLAlignedDataset):
         print('Loading labels...')
         train_label_path = os.path.join(label_dir, f"TrainTestLabels/Labels_{label_type}_Train.txt")
         test_label_path = os.path.join(label_dir, f"TrainTestLabels/Labels_{label_type}_Test.txt")
-        train_labels = pd.read_csv(train_label_path, sep=' ', header=None)
-        test_labels = pd.read_csv(test_label_path, sep=' ', header=None)
+        train_labels = pd.read_csv(train_label_path, sep=' ', header=None).values
+        test_labels = pd.read_csv(test_label_path, sep=' ', header=None).values
 
 
         # create image features and tag features to LocalDataset
