@@ -571,6 +571,11 @@ class CorrelationEvaluator:
         xtick_minor = (xtick_major[1:] + xtick_major[:-1]) / 2
         xtick_labels = [f"Party {i + 1}" for i in range(n_parties)]
 
+        # add lines to separate the parties
+        for i in range(n_parties - 1):
+            plt.axvline(x=xtick_major[i + 1] - 0.5, color='red', linewidth=2)
+            plt.axhline(y=xtick_major[i + 1] - 0.5, color='red', linewidth=2)
+
         ax.set_xticks(xtick_major, minor=False)
         ax.set_yticks(xtick_major, minor=False)
         ax.set_xticklabels(xtick_labels, minor=True)
@@ -585,7 +590,7 @@ class CorrelationEvaluator:
 
         # move title up
         if value is not None:
-            plt.title(f"Correlation matrix (inter-mcor={value:.2f})", y=1.05)
+            plt.title(f"Correlation matrix (Icor={value:.2f})", y=1.05)
         else:
             plt.title("Correlation matrix", y=1.05)
         if save_path is None:

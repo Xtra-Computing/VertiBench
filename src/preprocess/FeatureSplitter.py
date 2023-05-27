@@ -147,8 +147,8 @@ class CorrelationSplitter:
         self.runner = StarmapParallelization(self.pool.starmap)
 
         # split result of the last call of fit()
-        self.corr = None
-        self.n_features_on_party = None
+        # self.corr = None      # use evaluator.corr instead
+        # self.n_features_on_party = None   # use evaluator.n_features_on_party instead
         self.min_mcor = None
         self.max_mcor = None
 
@@ -264,8 +264,8 @@ class CorrelationSplitter:
         """
         Check if the required members are calculated by fit()
         """
-        assert self.corr is not None, "self.corr is None. Please call fit() first."
-        assert self.n_features_on_party is not None, "self.n_features_on_party is None. Please call fit() first."
+        assert self.evaluator.corr is not None, "self.evaluator.corr is None. Please call fit() first."
+        assert self.evaluator.n_features_on_party is not None, "self.evaluator.n_features_on_party is None. Please call fit() first."
         assert self.min_mcor is not None, "self.min_mcor is None. Please call fit() first."
         assert self.max_mcor is not None, "self.max_mcor is None. Please call fit() first."
 
@@ -283,8 +283,8 @@ class CorrelationSplitter:
         :param bias: (float) bias of BRKGA
         :param verbose: (bool) whether to print the progress
         """
-        self.corr = self.evaluator.corr_func(X)
-        self.n_features_on_party = self.split_num_features_equal(X.shape[1], self.num_parties)
+        self.evaluator.corr = self.evaluator.corr_func(X)
+        self.evaluator.n_features_on_party = self.split_num_features_equal(X.shape[1], self.num_parties)
 
         algorithm = BRKGA(
             n_elites=n_elites,
@@ -298,7 +298,7 @@ class CorrelationSplitter:
         if verbose:
             print("Calculating the min mcor of the overall correlation score...")
         res_min = minimize(
-            self.CorrMinProblem(self.corr, self.n_features_on_party, evaluator=self.evaluator, runner=self.runner),
+            self.CorrMinProblem(self.evaluator.corr, self.evaluator.n_features_on_party, evaluator=self.evaluator, runner=self.runner),
             algorithm,
             ('n_gen', n_gen),
             seed=self.seed,
@@ -309,7 +309,7 @@ class CorrelationSplitter:
         if verbose:
             print("Calculating the max mcor of the overall correlation score...")
         res_max = minimize(
-            self.CorrMaxProblem(self.corr, self.n_features_on_party, evaluator=self.evaluator, runner=self.runner),
+            self.CorrMaxProblem(self.evaluator.corr, self.evaluator.n_features_on_party, evaluator=self.evaluator, runner=self.runner),
             algorithm,
             ('n_gen', n_gen),
             seed=self.seed,
@@ -355,7 +355,7 @@ class CorrelationSplitter:
         # find the best permutation order that makes the mcor closest to the target mcor
         # target_mcor = beta * max_mcor + (1 - beta) * min_mcor
         res_beta = minimize(
-            self.CorrBestMatchProblem(self.corr, self.n_features_on_party, beta, self.min_mcor, self.max_mcor,
+            self.CorrBestMatchProblem(self.evaluator.corr, self.evaluator.n_features_on_party, beta, self.min_mcor, self.max_mcor,
                                       evaluator=self.evaluator, runner=self.runner),
             algorithm,
             termination,
@@ -369,7 +369,7 @@ class CorrelationSplitter:
         # print(f"Beta {self.beta}, Best match mcor: {best_match_mcor}")
 
         # summarize the feature ids on each party
-        party_cut_points = np.cumsum(self.n_features_on_party)
+        party_cut_points = np.cumsum(self.evaluator.n_features_on_party)
         party_cut_points = np.insert(party_cut_points, 0, 0)
         self.best_feature_per_party = []
         for i in range(len(party_cut_points) - 1):
@@ -411,7 +411,8 @@ class CorrelationSplitter:
         self.fit(X, n_elites, n_offsprings, n_mutants, n_gen, bias, verbose)
         return self.split(X, n_elites, n_offsprings, n_mutants, n_gen, bias, verbose, beta, term_tol, term_period)
 
-
+    def visualize(self, *args, **kwargs):
+        return self.evaluator.visualize(*args, **kwargs)
 
 
 
