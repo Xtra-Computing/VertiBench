@@ -42,15 +42,16 @@ class ImportanceEvaluator:
             "The number of samples should be the same for all parties"
         return n_features_on_party
 
-    def evaluate_feature(self, X, model: callable):
+    def evaluate_feature(self, X, model: callable, **kwargs):
         """
         Evaluate the importance of features in a dataset
         :param X: feature matrix
         :param model: [callable] model to be evaluated
+        :param kwargs: [dict] other parameters for shap.explainers.Permutation
         :return: [np.ndarray] sum of importance on each party
         """
         # calculate Shapley values for each feature
-        explainer = shap.explainers.Permutation(model, X)
+        explainer = shap.explainers.Permutation(model, X, **kwargs)
         sample_size = int(self.sample_rate * X.shape[0])
         X_sample = shap.sample(X, sample_size, random_state=self.seed)
         shap_values = explainer(X_sample).values
@@ -59,18 +60,19 @@ class ImportanceEvaluator:
         assert importance_by_feature.shape[0] == X.shape[1], "The number of features should be the same"
         return importance_by_feature
 
-    def evaluate(self, Xs, model: callable):
+    def evaluate(self, Xs, model: callable, **kwargs):
         """
         Evaluate the importance of features in VFL datasets
         :param Xs: [list] list of feature matrices
         :param model: [callable] model to be evaluated
+        :param kwargs: [dict] other parameters for shap.explainers.Permutation
         :return: [np.ndarray] sum of importance on each party
         """
         n_features_on_party = self.check_data(Xs)
         X = np.concatenate(Xs, axis=1)
 
         # calculate Shapley values for each feature
-        explainer = shap.explainers.Permutation(model, X)
+        explainer = shap.explainers.Permutation(model, X, **kwargs)
         sample_size = int(self.sample_rate * X.shape[0])
         X_sample = shap.sample(X, sample_size, random_state=self.seed)
         shap_values = explainer(X_sample).values
@@ -115,7 +117,7 @@ class CorrelationEvaluator:
     """
     Correlation evaluator for VFL datasets
     """
-    def __init__(self, corr_func='spearmanr', gamma=1.0, gpu_id=None):
+    def __init__(self, corr_func='spearmanr', gamma=1.0, gpu_id=None, svd_algo='auto'):
         """
         :param corr_func: [str] function to calculate the correlation between two features
         :param gamma: [float] weight of the inner-party correlation score
@@ -126,6 +128,8 @@ class CorrelationEvaluator:
         self.corr = None
         self.n_features_on_party = None
         self.gpu_id = gpu_id
+        self.svd_algo = svd_algo
+        assert self.svd_algo in ['auto', 'approx', 'exact'], "svd_algo should be auto, approx or exact"
         if self.gpu_id is not None:
             self.device = torch.device(f"cuda:{self.gpu_id}")
             if corr_func == "spearmanr":
@@ -250,6 +254,8 @@ class CorrelationEvaluator:
         :return:
         """
         # start_time = time.time()
+        if n_components > min(corr.shape):
+            n_components = min(corr.shape)
 
         assert np.isnan(corr).any() == False, "NaN values should be replaced with 0"
         _, singular_values, _ = randomized_svd(corr, n_components=n_components, n_oversamples=n_oversamples, n_iter=n_iter,
@@ -279,6 +285,8 @@ class CorrelationEvaluator:
         # start_time = time.time()
 
         # assert torch.isnan(corr).any() == False, "NaN values should be replaced with 0"
+        if n_components > min(corr.shape):
+            n_components = min(corr.shape)
 
         _, singular_values, _ = torch.svd_lowrank(corr, q=n_components, niter=n_iter)
         singular_shape = min(corr.shape)
@@ -290,19 +298,20 @@ class CorrelationEvaluator:
         # print(f"Time for calculating the correlation score: {end_time - start_time}")
         return float(score.item())
 
-    def mcor_singular(self, corr, algo='auto', **kwargs):
+    def mcor_singular(self, corr, **kwargs):
         """
         Calculat the std of the singular values of corr matrix.
         :param corr: [np.ndarray] correlation matrix
-        :param algo: [str] algorithm to calculate the overall correlation score of a correlation matrix
-                    - 'auto': automatically choose the algorithm based on the size of the correlation matrix
-                              if the size is smaller than 200, use 'exact', otherwise use 'approx'
-                    - 'exact': calculate the exact singular values
-                    - 'approx': calculate the approximate singular values
         :param kwargs:
+
+        :param self.svd_algo: [str] algorithm to calculate the overall correlation score of a correlation matrix
+                        - 'auto': automatically choose the algorithm based on the size of the correlation matrix
+                                  if the size is smaller than 200, use 'exact', otherwise use 'approx'
+                        - 'exact': calculate the exact singular values
+                        - 'approx': calculate the approximate singular values
         :return:
         """
-        if algo == 'auto':
+        if self.svd_algo == 'auto':
             if min(corr.shape) < 500:
                 if self.gpu_id is not None:
                     return self.mcor_singular_exact_gpu(corr)
@@ -313,18 +322,18 @@ class CorrelationEvaluator:
                     return self.mcor_singular_approx_gpu(corr, **kwargs)
                 else:
                     return CorrelationEvaluator.mcor_singular_approx(corr, **kwargs)
-        elif algo == 'exact':
+        elif self.svd_algo == 'exact':
             if self.gpu_id is not None:
                 return self.mcor_singular_exact_gpu(corr)
             else:
                 return CorrelationEvaluator.mcor_singular_exact(corr)
-        elif algo == 'approx':
+        elif self.svd_algo == 'approx':
             if self.gpu_id is not None:
                 return self.mcor_singular_approx_gpu(corr, **kwargs)
             else:
                 return CorrelationEvaluator.mcor_singular_approx(corr, **kwargs)
         else:
-            raise ValueError(f"Unknown algorithm: {algo}")
+            raise ValueError(f"Unknown algorithm: {self.svd_algo}")
 
     def _get_inner_and_inter_corr(self, corr, n_features_on_party):
         """
@@ -518,7 +527,7 @@ class CorrelationEvaluator:
         """
         return self.overall_corr_score(self.corr, self.n_features_on_party)
 
-    def visualize(self, save_path=None, value=None, cmap='cividis', map_func=np.abs, fontsize=16):
+    def visualize(self, save_path=None, value=None, cmap='cividis', map_func=np.abs, fontsize=16, title_size=None):
         """
         Visualize the correlation matrix.
         :param map_func: [callable|None|str] function to map the correlation matrix. If None, the correlation matrix will
@@ -534,6 +543,9 @@ class CorrelationEvaluator:
             corr = self.corr.cpu().numpy()
         else:
             corr = self.corr
+
+        if title_size is None:
+            title_size = fontsize
 
         if map_func is None:
             map_corr = corr
@@ -590,9 +602,9 @@ class CorrelationEvaluator:
 
         # move title up
         if value is not None:
-            plt.title(f"Correlation matrix (Icor={value:.2f})", y=1.05)
+            plt.title(f"Correlation matrix (Icor={value:.2f})", y=1.05, fontsize=title_size)
         else:
-            plt.title("Correlation matrix", y=1.05)
+            plt.title("Correlation matrix", y=1.05, fontsize=title_size)
         if save_path is None:
             plt.show()
         else:

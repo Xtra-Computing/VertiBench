@@ -414,7 +414,30 @@ class CorrelationSplitter:
     def visualize(self, *args, **kwargs):
         return self.evaluator.visualize(*args, **kwargs)
 
+    def evaluate_beta(self, score):
+        """
+        Evaluate the beta value that makes the score closest to the target score.
+        :param score: [float] the score to be evaluated
+        :return: [float] the beta value that makes the score closest to the target score
+        """
+        if self.min_mcor is None or self.max_mcor is None:
+            raise ValueError("The min and max mcor have not been calculated. Please call fit() first.")
+        if not (self.min_mcor <= score <= self.max_mcor):
+            warnings.warn(f"The score {score} is out of range [{self.min_mcor}, {self.max_mcor}].")
+        return (score - self.min_mcor) / (self.max_mcor - self.min_mcor)
 
+    def evaluate_alpha(self, scores):
+        """
+        Evaluate the alpha value of a symmetric Dirichlet distribution that has the closest variance with the given
+        Dirichlet distribution using scores as the parameters.
+        :param scores: the importance scores of each party
+        :return: [float] the alpha value that makes the score closest to the target score
+        """
+        assert len(scores) == self.num_parties
+        scores = scores / np.sum(scores)    # normalize the scores
+        score_var = np.var(scores)
+        est_alpha = (self.num_parties - 1 - self.num_parties ** 2 * score_var) / (self.num_parties ** 3 * score_var)
+        return est_alpha
 
 
 
