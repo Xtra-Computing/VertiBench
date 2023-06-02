@@ -356,10 +356,10 @@ if __name__ == '__main__':
         model = 'resnet'
     else:
         # Note: torch.compile() in torch 2.0 significantly harms the accuracy with little speed up
-        train_dataset = VFLSynAlignedDataset.from_pickle(f"data/syn/{args.dataset}", f'{args.dataset}', 4,
+        train_dataset = VFLSynAlignedDataset.from_pickle(f"data/syn/{args.dataset}", f'{args.dataset}', args.n_parties,
                                                       primary_party_id=args.primary_party, splitter=args.splitter,
                                                       weight=args.weights, beta=args.beta, seed=args.seed, type='train')
-        test_dataset = VFLSynAlignedDataset.from_pickle(f"data/syn/{args.dataset}", f'{args.dataset}', 4,
+        test_dataset = VFLSynAlignedDataset.from_pickle(f"data/syn/{args.dataset}", f'{args.dataset}', args.n_parties,
                                                      primary_party_id=args.primary_party, splitter=args.splitter,
                                                      weight=args.weights, beta=args.beta, seed=args.seed, type='test')
         model = 'mlp'
