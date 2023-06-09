@@ -1,3 +1,5 @@
+import warnings
+warnings.filterwarnings("ignore", message=".*The 'nopython' keyword.*")
 from typing import Callable
 import argparse
 import warnings
@@ -10,7 +12,8 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 from torchvision.ops import MLP
 from torchvision.models import resnet18, resnet34
-from torchsummaryX import summary
+# from torchsummaryX import summary
+import datetime, pytz
 
 from tqdm import tqdm
 
@@ -220,7 +223,7 @@ def fit(model, optimizer, loss_fn, metric_fn, train_loader, test_loader=None, ep
 
     sample_Xs = next(iter(train_loader))[0]
     sample_Xs = [Xi.to(device) for Xi in sample_Xs]
-    summary(model, sample_Xs)
+    # summary(model, sample_Xs)
 
     for epoch in range(epochs):
         model.train()
@@ -251,9 +254,9 @@ def fit(model, optimizer, loss_fn, metric_fn, train_loader, test_loader=None, ep
             optimizer.step()
 
         train_score = metric_fn(train_y.data.cpu().numpy(), train_pred_y.data.cpu().numpy())
-        print(f"Epoch: {epoch}, Train Loss: {total_loss / len(train_loader)}, Train Score: {train_score}")
+        print(datetime.datetime.now(pytz.timezone('Asia/Shanghai')).strftime("%Y-%m-%d %H:%M:%S"), f"Epoch: {epoch}, Train Loss: {total_loss / len(train_loader)}, Train Score: {train_score}")
         if hasattr(model, 'comm_logger'):
-            print(f"Communication size: in = {model.comm_logger.in_comm}, out = {model.comm_logger.out_comm}")
+            print(datetime.datetime.now(pytz.timezone('Asia/Shanghai')).strftime("%Y-%m-%d %H:%M:%S"), f"Communication size: in = {model.comm_logger.in_comm}, out = {model.comm_logger.out_comm}")
             model.comm_logger.save_log()
 
         if scheduler is not None:
@@ -283,7 +286,7 @@ def fit(model, optimizer, loss_fn, metric_fn, train_loader, test_loader=None, ep
                     test_y = torch.cat([test_y, y.reshape(-1, 1)], dim=0)
 
                 test_score = metric_fn(test_y.data.cpu().numpy(), test_y_pred.data.cpu().numpy())
-                print(f"Epoch: {epoch}, Test Loss: {test_loss / len(test_loader)}, Test Score: {test_score}")
+                print(datetime.datetime.now(pytz.timezone('Asia/Shanghai')).strftime("%Y-%m-%d %H:%M:%S"), f"Epoch: {epoch}, Test Loss: {test_loss / len(test_loader)}, Test Score: {test_score}")
 
 
 # evaluate the model on the test set
