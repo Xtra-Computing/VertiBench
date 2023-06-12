@@ -102,7 +102,9 @@ class LocalDataset(Dataset):
         # flatten >=2 dimensional X (e.g. image) to 1 dimensional
         if len(self.X.shape) > 2:
             X = self.X.reshape(self.X.shape[0], -1)
-
+        else:
+            X = self.X
+            
         assert type in ['raw', 'fedtree'], "type should be in ['raw', 'fedtree']"
         if type == 'raw':
             df = pd.DataFrame(np.concatenate([X, self.y.reshape(-1, 1)], axis=1))
