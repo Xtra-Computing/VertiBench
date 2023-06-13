@@ -224,6 +224,7 @@ def fit(model, optimizer, loss_fn, metric_fn, train_loader, test_loader=None, ep
     sample_Xs = next(iter(train_loader))[0]
     sample_Xs = [Xi.to(device) for Xi in sample_Xs]
     # summary(model, sample_Xs)
+    # summary(model, sample_Xs)
 
     for epoch in range(epochs):
         model.train()
