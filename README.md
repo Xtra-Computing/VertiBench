@@ -12,7 +12,7 @@ conda activate vertibench
 pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
 
 # Install other libraries
-pip3 install scikit-learn requests pytz tqdm pandas deprecated torchmetrics shap matplotlib tifffile opencv-python
+pip3 install scikit-learn requests pytz tqdm pandas deprecated torchmetrics shap matplotlib tifffile opencv-python scipy
 ```
 
 ## Prepare the dataset
