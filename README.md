@@ -1,8 +1,8 @@
 # VertiBench
 
-# Prerequisites
+## Prerequisites
 
-## Prepare the environment
+### Prepare the environment
 ```bash
 # Create environment for VertiBench
 conda create -n vertibench python=3.10
@@ -15,7 +15,7 @@ pip3 install torch torchvision torchaudio --index-url https://download.pytorch.o
 pip3 install scikit-learn requests pytz tqdm pandas deprecated torchmetrics shap matplotlib tifffile opencv-python scipy pymoo xgboost difflib
 ```
 
-## Prepare the dataset
+### Prepare the dataset
 Please ensure that your folder structure of `data/` looks like this:
 
 ```bash
@@ -61,7 +61,7 @@ Please ensure that your folder structure of `data/` looks like this:
 
 You are all set! Please proceed to the "Examples" section for more details on how to run the test.
 
-# Examples
+## Examples
 
 Please make sure that your current working directory is set to "VertiBench" with the following commands:
 
@@ -72,7 +72,7 @@ cd VertiBench
 
 Please replace <repository_url> with the actual URL of this Git repository.
 
-## Vertical Split the dataset
+### Vertical Split the dataset
 This Python script is designed to split a dataset into vertical partitions. The script leverages different splitting methods and can operate on various hardware including GPUs for efficient data partitioning. 
 
 **Usage:**
@@ -102,7 +102,7 @@ python src/preprocess/vertical_split.py data/syn/gisette/gisette.libsvm 4 -sp im
 ```
 
 
-## Evaluate SplitNN on splited dataset
+### Evaluate SplitNN on splited dataset
 
 - Running `SplitNN` algorithm on `gisette` dataset, the dataset have `2` classes, using evaluation metric `acc`, there are `4` parties collaboration, using `importance` splitter with weight `1.0`, using seed `3`, running on GPU id `0`
 
@@ -110,6 +110,6 @@ python src/preprocess/vertical_split.py data/syn/gisette/gisette.libsvm 4 -sp im
 python src/algorithm/SplitNN.py -d gisette -c 2 -m acc -p 4 -sp imp -w 1.0 -s 3 -g 0
 ```
 
-# Citation
+## Citation
 ```txt
 ```
