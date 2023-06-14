@@ -70,6 +70,13 @@ cd VertiBench
 python src/algorithm/SplitNN.py -d epsilon -c 2 -m acc -p 4 -sp corr -b 0.0 -s 0 -g 2
 ```
 
+- Running `FedTree` algorithm on `satellite` dataset, the dataset have `4` classes, there are `16` parties collaboration, using `real dataset`, the path of dataset is `/data/real/satellite/cache`, random seed is `4`.
+```bash
+git clone 
+cd VertiBench
+python src/algorithm/FedTree.py -d satellite -c 4 -p 16 -rd -r /data/real/satellite/cache -s 4
+```
+
 # Citation
 ```txt
 ```
