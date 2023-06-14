@@ -312,7 +312,7 @@ class CorrelationEvaluator:
         :return:
         """
         if self.svd_algo == 'auto':
-            if min(corr.shape) < 500:
+            if min(corr.shape) < 100:
                 if self.gpu_id is not None:
                     return self.mcor_singular_exact_gpu(corr)
                 else:

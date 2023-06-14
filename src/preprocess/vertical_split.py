@@ -6,6 +6,7 @@ import argparse
 import os
 import sys
 import warnings
+import time
 
 import numpy as np
 import pandas as pd
@@ -19,7 +20,7 @@ from preprocess.FeatureEvaluator import ImportanceEvaluator, CorrelationEvaluato
 from preprocess.FeatureSplitter import ImportanceSplitter, CorrelationSplitter
 from dataset.LocalDataset import LocalDataset
 from dataset.GlobalDataset import GlobalDataset
-from utils import PartyPath
+from utils.utils import PartyPath
 
 
 def split_vertical_data(X, num_parties,
@@ -96,6 +97,8 @@ if __name__ == '__main__':
     parser.add_argument('--gpu_id', '-g', type=int, default=None)
     parser.add_argument('--jobs', '-j', type=int, default=1)
     parser.add_argument('--verbose', '-v', action='store_true')
+    parser.add_argument('--eval-time', '-et', action='store_true', help="whether to evaluate the time cost. If True, "
+                                                                        "saving dataset will be skipped.")
     args = parser.parse_args()
 
     if args.jobs > 1:
@@ -106,6 +109,8 @@ if __name__ == '__main__':
         print(f"Loading dataset from {args.dataset_path}...")
     dataset_path = args.dataset_path
     X, y = GlobalDataset.from_file(dataset_path).data
+
+    start_time = time.time()
     Xs = split_vertical_data(X, num_parties=args.num_parties,
                                 splitter=args.splitter,
                                 weights=args.weights,
@@ -114,6 +119,12 @@ if __name__ == '__main__':
                                 gpu_id=args.gpu_id,
                                 n_jobs=args.jobs,
                                 verbose=args.verbose)
+    end_time = time.time()
+    print(f"Time cost: {end_time - start_time:.2f}s")
+
+    if args.eval_time:
+        print("Evaluation time only. Skip saving dataset.")
+        sys.exit(0)    # exit without saving
 
     # random shuffle Xs
     if args.verbose:

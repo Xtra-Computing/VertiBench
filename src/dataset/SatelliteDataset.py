@@ -190,7 +190,13 @@ class SatelliteDataset(VFLAlignedDataset):
             print(f"Saved {path}")
 
     @classmethod
-    def from_pickle(cls, folder, type='train', n_parties=16, n_jobs=1):
+    def from_pickle(cls, folder, type='train', n_parties=16, n_jobs=1, primary_party_id=0):
+        if n_parties == 1:
+            path = os.path.join(folder, f"satellite_party{primary_party_id}_{type}.pkl")
+            local_dataset = LocalDataset.from_pickle(path)
+            print(f"Loaded {path}")
+            return cls(local_datasets=[local_dataset], num_parties=n_parties)
+
         if n_jobs == 1:
             local_datasets = []
             for party_id in range(n_parties):

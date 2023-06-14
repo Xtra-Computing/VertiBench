@@ -256,7 +256,7 @@ def fit(model, optimizer, loss_fn, metric_fn, train_loader, test_loader=None, ep
         train_score = metric_fn(train_y.data.cpu().numpy(), train_pred_y.data.cpu().numpy())
         print(datetime.datetime.now(pytz.timezone('Asia/Shanghai')).strftime("%Y-%m-%d %H:%M:%S"), f"Epoch: {epoch}, Train Loss: {total_loss / len(train_loader)}, Train Score: {train_score}")
         if hasattr(model, 'comm_logger'):
-            print(datetime.datetime.now(pytz.timezone('Asia/Shanghai')).strftime("%Y-%m-%d %H:%M:%S"), f"Communication size: in = {model.comm_logger.in_comm}, out = {model.comm_logger.out_comm}")
+            print(datetime.datetime.now(pytz.timezone('Asia/Shanghai')).strftime("%Y-%m-%d %H:%M:%S"))
             model.comm_logger.save_log()
 
         if scheduler is not None:
@@ -354,8 +354,10 @@ if __name__ == '__main__':
         # test_dataset = SatelliteDataset.from_global(test_global_dataset, n_jobs=20)
         # train_dataset.to_pickle("data/real/satellite/cache", 'train')
         # test_dataset.to_pickle("data/real/satellite/cache", 'test')
-        train_dataset = SatelliteDataset.from_pickle("data/real/satellite/cache", 'train', n_parties=args.n_parties, n_jobs=8)
-        test_dataset = SatelliteDataset.from_pickle("data/real/satellite/cache", 'test', n_parties=args.n_parties, n_jobs=8)
+        train_dataset = SatelliteDataset.from_pickle("data/real/satellite/cache", 'train', n_parties=args.n_parties,
+                                                     primary_party_id=args.primary_party, n_jobs=8)
+        test_dataset = SatelliteDataset.from_pickle("data/real/satellite/cache", 'test', n_parties=args.n_parties,
+                                                    primary_party_id=args.primary_party, n_jobs=8)
         model = 'resnet'
     else:
         # Note: torch.compile() in torch 2.0 significantly harms the accuracy with little speed up
