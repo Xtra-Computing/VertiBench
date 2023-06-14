@@ -63,18 +63,51 @@ You are all set! Please proceed to the "Examples" section for more details on ho
 
 # Examples
 
-- Running `SplitNN` algorithm on `epsilon` dataset, the dataset have `2` classes, using metric `acc`, `4` parties collaboration, using `correlation` splitter with beta `0.0`, running on GPU id `2`
+Please make sure that your current working directory is set to "VertiBench" with the following commands:
+
 ```bash
-git clone 
+git clone <repository_url> 
 cd VertiBench
-python src/algorithm/SplitNN.py -d epsilon -c 2 -m acc -p 4 -sp corr -b 0.0 -s 0 -g 2
 ```
 
-- Running `FedTree` algorithm on `satellite` dataset, the dataset have `4` classes, there are `16` parties collaboration, using `real dataset`, the path of dataset is `/data/real/satellite/cache`, random seed is `4`.
+Please replace <repository_url> with the actual URL of this Git repository.
+
+## Vertical Split the dataset
+This Python script is designed to split a dataset into vertical partitions. The script leverages different splitting methods and can operate on various hardware including GPUs for efficient data partitioning. 
+
+**Usage:**
 ```bash
-git clone 
-cd VertiBench
-python src/algorithm/FedTree.py -d satellite -c 4 -p 16 -rd -r /data/real/satellite/cache -s 4
+python src/preprocess/vertical_split.py <dataset_path> <num_parties> [-sp <splitter>] [-w <weights>] [-b <beta>] [-s <seed>] [-t <test_ratio>] [-g <gpu_id>] [-j <jobs>] [-v]
+```
+
+Where:
+- `dataset_path`: The path to the dataset file to be split.
+- `num_parties`: The number of parties for data distribution.
+- `splitter`: Optional, the method used to split the dataset, either 'imp' (ImportanceSplitter) or 'corr' (CorrelationSplitter). Default is `imp`.
+- `weights`: Optional, the weights for the ImportanceSplitter. Default is 1.
+- `beta`: Optional, the beta value for the CorrelationSplitter. Default is 1.
+- `seed`: Optional, the random seed used for data splitting.
+- `test_ratio`: Optional, the ratio of data to be allocated for testing. If not specified, no test split is performed.
+- `gpu_id`: Optional, the ID of the GPU used for the CorrelationSplitter and CorrelationEvaluator. If not specified, the operation runs on the CPU.
+- `jobs`: Optional, the number of jobs for the CorrelationSplitter. Default is 1.
+- `v`: Optional, prints verbose information during execution.
+
+The script will first load the dataset, then apply the splitting method as per the provided arguments. The subsets of the data are then shuffled and split into train-test datasets based on the provided test ratio. The script will finally store the datasets into separate files. The storage paths are generated using the 'PartyPath' utility which incorporates the input parameters to ensure unique file paths for different settings.
+
+**Example:**
+
+```bash
+# vertical split "gisette" dataset to 4 parties, using importance splitter with weight 1.0, 20% data will be allocated for testing, random seed for splitting is 3, running on gpu 0
+python src/preprocess/vertical_split.py data/syn/gisette/gisette.libsvm 4 -sp imp -w 1 -t 0.2 -s 3 -g 0
+```
+
+
+## Evaluate SplitNN on splited dataset
+
+- Running `SplitNN` algorithm on `gisette` dataset, the dataset have `2` classes, using evaluation metric `acc`, there are `4` parties collaboration, using `importance` splitter with weight `1.0`, using seed `3`, running on GPU id `0`
+
+```bash
+python src/algorithm/SplitNN.py -d gisette -c 2 -m acc -p 4 -sp imp -w 1.0 -s 3 -g 0
 ```
 
 # Citation
