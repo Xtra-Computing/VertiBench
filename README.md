@@ -109,3 +109,7 @@ python src/preprocess/vertical_split.py data/syn/gisette/gisette.libsvm 4 -sp im
 ```bash
 python src/algorithm/SplitNN.py -d gisette -c 2 -m acc -p 4 -sp imp -w 1.0 -s 3 -g 0
 ```
+
+## Satellite Dataset
+
+Plese see the description of [Satellite Dataset](Satellite.md)
