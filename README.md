@@ -2,7 +2,7 @@
 
 ## Satellite Dataset
 
-Plese see the description of [Satellite Dataset](Satellite.md)
+Please see the description of [Satellite Dataset](Satellite.md)
 
 ## Prerequisites
 
