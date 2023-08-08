@@ -4,10 +4,12 @@
 
 1. **Download** the `satellite.zip` file from [here](https://drive.google.com/drive/folders/1Ti73Doy7xW0BRv2D8FHZFqSlzZWfd2gj)
 2. **Verify** the file integrity using the following command:
+
+   (Make sure that the result matches the value provided in `satellite.zip.md5sum`.)
 ```
-md5sum satellite.zip
+md5sum satellite.zip # 
 ```
-Make sure that the result matches the value provided in `satellite.zip.md5sum`.
+
 
 3. **Unzip** the `satellite.zip`, If the file integrity check is successful, the zip file can be extracted using any standard unzipping tool. After extraction, the dataset's file structure will be as follows:
 
@@ -27,19 +29,22 @@ Make sure that the result matches the value provided in `satellite.zip.md5sum`.
 The dataset is organized into `16` parties, each containing test and training files in CSV formats. 
 
 The naming convention follows the pattern `satellite_partyX_test.csv` and `satellite_partyX_train.csv`, where `X` ranges from `0` to `15`.
+<img width="1126" alt="file" src="https://github.com/JerryLife/VertiBench/assets/14367694/f2604d16-b3a5-49b6-a919-494bf42cdad5">
+
+
 
 ### 2.1 CSV File Format
 Each CSV file consists of a header and the following columns (total 324,534 columns):
 
-`id`: ID
+```
+id, y, x0, x1, ..., x324531
+```
 
-`y`: Label
+For example the `satellite_party0_test.csv`
+<img width="1129" alt="csv" src="https://github.com/JerryLife/VertiBench/assets/14367694/2920bed6-ba7c-4f39-88bc-d8746d72718b">
 
-`x0`: Feature 0
+## License
 
-`x1`: Feature 1
+The VertiBench Satellite Dataset is licensed under the [Creative Commons Attribution 4.0 International License](https://creativecommons.org/licenses/by/4.0/). You are free to share and adapt the material for any purpose, even commercially, as long as you provide appropriate credit, link to the license, and indicate if changes were made.
 
-...
-
-`x324531`: Feature 324,531
-
+Please refer to the full license text for more detailed information.
