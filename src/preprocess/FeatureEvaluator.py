@@ -14,6 +14,7 @@ import shap
 from joblib import Parallel, delayed
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
+from sklearn.datasets import load_svmlight_file
 
 class ImportanceEvaluator:
     """
@@ -613,7 +614,7 @@ class CorrelationEvaluator:
 
 
 if __name__ == '__main__':
-    from sklearn.datasets import load_svmlight_file
+
     X, y = load_svmlight_file("data/real/vehicle/processed/vehicle.libsvm")
     X = X.toarray()
 

@@ -342,7 +342,7 @@ class CorrelationSplitter:
         """
         self.check_fit_data()
 
-        # termintation by number of generations or the error is less than 1e-6
+        # termination by number of generations or the error is less than 1e-6
         termination = DefaultSingleObjectiveTermination(ftol=term_tol, n_max_gen=n_gen, period=term_period)
         algorithm = BRKGA(
             n_elites=n_elites,
