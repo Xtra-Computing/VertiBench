@@ -1,5 +1,19 @@
 # Satellite Dataset
 
+The Satellite dataset encompasses Point of Interest (POI) data, each associated with one or more Areas of Interest (AOI).
+
+Every AOI incorporates a unique location identifier, a land type, and **16 low-resolution**, **13-channel** images (13 spectral bands, up to 10 m/pixel), each taken during a satellite visit to the location. 
+
+The Satellite dataset encompasses **`four land types`** as labels, namely `Amnesty POI` (4.8%), `ASMSpotter` (8.9%), `Landcover` (61.3%), and `UNHCR` (25.0%), making the task a **`4-class classification problem`** of **`3927 locations`**.
+
+
+
+<img width="1222" alt="all bands" src="https://github.com/JerryLife/VertiBench/assets/14367694/4386ed55-76b5-4282-a374-8a03c9da509c">
+
+See `Satellite.ipynb` for more details.
+
+
+
 ## 1. Prerequisite
 
 1. **Download** the `satellite.zip` file from [here](https://drive.google.com/drive/folders/1Ti73Doy7xW0BRv2D8FHZFqSlzZWfd2gj)
@@ -46,7 +60,7 @@ For example the `satellite_party0_test.csv`
 ## 3. Convert CSV to Image
 
 You can use the CSV data directly, or convert it to an image, column `x0` to `x324531` represents the `13-channel` `158x158 pixel` image.
-
+the pixel values of each image are scaled to integer values within the range of [0, 255]
 `324532 = 13 x 158 x 158`
 
 
