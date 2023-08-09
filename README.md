@@ -2,7 +2,7 @@
 
 ## Satellite Dataset
 
-Please see the description of [Satellite Dataset](Satellite.md)
+Please see [Satellite.md](Satellite.md) for the description and [Satellite.ipynb](Satellite.ipynb) for the visualization.
 
 ## Prerequisites
 
