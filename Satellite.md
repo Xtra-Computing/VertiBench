@@ -43,6 +43,14 @@ id, y, x0, x1, ..., x324531
 For example the `satellite_party0_test.csv`
 <img width="1129" alt="csv" src="https://github.com/JerryLife/VertiBench/assets/14367694/2920bed6-ba7c-4f39-88bc-d8746d72718b">
 
+## 3. Convert CSV to Image
+
+You can use the CSV data directly, or convert it to an image, column `x0` to `x324531` represents the `13-channel` `158x158 pixel` image.
+
+`324532 = 13 x 158 x 158`
+
+
+
 ## License
 
 The VertiBench Satellite Dataset is licensed under the [Creative Commons Attribution 4.0 International License](https://creativecommons.org/licenses/by/4.0/). You are free to share and adapt the material for any purpose, even commercially, as long as you provide appropriate credit, link to the license, and indicate if changes were made.
