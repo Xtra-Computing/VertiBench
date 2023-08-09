@@ -63,7 +63,7 @@ You can use the CSV data directly, or convert it to an image, column `x0` to `x3
 the pixel values of each image are scaled to integer values within the range of [0, 255]
 `324532 = 13 x 158 x 158`
 
-
+See `Satellite.ipynb` for more details.
 
 ## License
 
