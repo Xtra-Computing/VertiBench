@@ -190,3 +190,6 @@ class VFLSynAlignedDataset(VFLAlignedDataset):
             score = evaluator.fit(Xs)   # score is None
         evaluator.visualize(value=score)
 
+    @property
+    def Xs(self):
+        return [local_dataset.X for local_dataset in self.local_datasets]

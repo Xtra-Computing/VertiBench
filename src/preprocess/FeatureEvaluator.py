@@ -118,11 +118,13 @@ class CorrelationEvaluator:
     """
     Correlation evaluator for VFL datasets
     """
-    def __init__(self, corr_func='spearmanr', gamma=1.0, gpu_id=None, svd_algo='auto'):
+    def __init__(self, corr_func='spearmanr', gamma=1.0, gpu_id=None, svd_algo='auto', **kwargs):
         """
         :param corr_func: [str] function to calculate the correlation between two features
         :param gamma: [float] weight of the inner-party correlation score
         :param gpu_id: [int] GPU id to use. If None, use CPU
+        :param svd_algo: [str] algorithm to use for SVD. Should be one of {'auto', 'approx', 'exact'}
+        :param kwargs: [dict] other parameters for mcor_singular
         """
         assert corr_func in ["spearmanr"], "corr_func should be spearmanr"
         self.gamma = gamma
@@ -140,6 +142,7 @@ class CorrelationEvaluator:
             if corr_func == "spearmanr":
                 self.corr_func = self.spearmanr
         print(f"CorrelationEvaluator uses {self.device}")
+        self.mcor_kwargs = kwargs
 
     def spearmanr_gpu(self, X):
         """
@@ -209,9 +212,12 @@ class CorrelationEvaluator:
         """
         # start_time = time.time()
         assert np.isnan(corr).any() == False, "NaN values should be replaced with 0"
-        EX2 = np.linalg.norm(corr, ord='fro') ** 2 / min(corr.shape)
-        EX = np.linalg.norm(corr, ord='nuc') / min(corr.shape)
-        score = np.sqrt(EX2 - EX ** 2)
+        # EX2 = np.linalg.norm(corr, ord='fro') ** 2 / min(corr.shape)
+        # EX = np.linalg.norm(corr, ord='nuc') / min(corr.shape)
+        # score = np.sqrt(EX2 - EX ** 2)
+
+        vals = np.linalg.svd(corr, compute_uv=False)
+        score = np.std(vals)
 
         # end_time = time.time()
         # print(f"Time for calculating the correlation score: {end_time - start_time}")
@@ -229,9 +235,12 @@ class CorrelationEvaluator:
         :return:
         """
         # start_time = time.time()
-        EX2 = torch.norm(corr, p='fro') ** 2 / min(corr.shape)
-        EX = torch.norm(corr, p='nuc') / min(corr.shape)
-        score = torch.sqrt(EX2 - EX ** 2)
+        # EX2 = torch.norm(corr, p='fro') ** 2 / min(corr.shape)
+        # EX = torch.norm(corr, p='nuc') / min(corr.shape)
+        # score = torch.sqrt(EX2 - EX ** 2)
+
+        vals = torch.linalg.svdvals(corr)
+        score = torch.std(vals)
 
         # end_time = time.time()
         # print(f"Time for calculating the correlation score: {end_time - start_time}")
@@ -312,6 +321,9 @@ class CorrelationEvaluator:
                         - 'approx': calculate the approximate singular values
         :return:
         """
+        # merge kwargs with self.kwargs, and overwrite self.kwargs if there is a conflict
+        kwargs = self.mcor_kwargs | kwargs
+
         if self.svd_algo == 'auto':
             if min(corr.shape) < 100:
                 if self.gpu_id is not None:
