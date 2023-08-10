@@ -31,7 +31,8 @@ def split_vertical_data(X, num_parties,
                         seed=None,
                         gpu_id=None,
                         n_jobs=1,
-                        verbose=False):
+                        verbose=False,
+                        split_image=False):
     """
     Split a dataset into vertical partitions.
 
@@ -74,11 +75,11 @@ def split_vertical_data(X, num_parties,
     # split data
     if splitter == 'imp':
         splitter = ImportanceSplitter(num_parties, weights, seed)
-        Xs = splitter.split(X, allow_empty_party=False)     # by default, we do not allow empty parties
+        Xs = splitter.split(X, allow_empty_party=False, split_image=split_image)     # by default, we do not allow empty parties
     elif splitter == 'corr':
         evaluator = CorrelationEvaluator(corr_func=corr_func, gpu_id=gpu_id)
         splitter = CorrelationSplitter(num_parties, evaluator, seed, gpu_id=gpu_id, n_jobs=n_jobs)
-        Xs = splitter.fit_split(X, beta=beta, verbose=verbose)
+        Xs = splitter.fit_split(X, beta=beta, verbose=verbose, split_image=split_image)
     else:
         raise NotImplementedError(f"Splitter {splitter} is not implemented. splitter should be in ['imp', 'corr']")
 
@@ -93,12 +94,14 @@ if __name__ == '__main__':
     parser.add_argument('--weights', '-w', type=float, default=1, help="weights for the ImportanceSplitter")
     parser.add_argument('--beta', '-b', type=float, default=1, help="beta for the CorrelationSplitter")
     parser.add_argument('--seed', '-s', type=int, default=None)
-    parser.add_argument('--test', '-t', type=float, default=None, help="test split ratio. If None, no test split.")
+    parser.add_argument('--test', '-t', type=float, default=0, help="test split ratio. If 0, no test split.")
     parser.add_argument('--gpu_id', '-g', type=int, default=None)
     parser.add_argument('--jobs', '-j', type=int, default=1)
     parser.add_argument('--verbose', '-v', action='store_true')
     parser.add_argument('--eval-time', '-et', action='store_true', help="whether to evaluate the time cost. If True, "
                                                                         "saving dataset will be skipped.")
+    parser.add_argument('--split-image', '-si', default=False, action='store_true', help="whether to split image dataset")
+
     args = parser.parse_args()
 
     if args.jobs > 1:
@@ -118,7 +121,8 @@ if __name__ == '__main__':
                                 seed=args.seed,
                                 gpu_id=args.gpu_id,
                                 n_jobs=args.jobs,
-                                verbose=args.verbose)
+                                verbose=args.verbose,
+                                split_image=args.split_image)
     end_time = time.time()
     print(f"Time cost: {end_time - start_time:.2f}s")
 
@@ -129,6 +133,7 @@ if __name__ == '__main__':
     # random shuffle Xs
     if args.verbose:
         print("Random shuffle...")
+        
     np.random.seed(args.seed)
     random_indices = np.random.permutation(X.shape[0])
     Xs = [X[random_indices] for X in Xs]
@@ -136,14 +141,20 @@ if __name__ == '__main__':
 
     if args.verbose:
         print("Train test splitting...")
+
     for i, X in enumerate(Xs):
+        path = PartyPath(dataset_path, args.num_parties, i, args.splitter, args.weights, args.beta, args.seed, fmt='pkl')
+        
         n_train_samples = int(X.shape[0] * (1 - args.test))
+        
         X_train, y_train = X[:n_train_samples], y[:n_train_samples]
         X_test, y_test = X[n_train_samples:], y[n_train_samples:]
-        print(f"Saving party {i}: {X.shape}")
+        
+        print(f"Saving train party {i}: {X.shape}")
         local_train_dataset = LocalDataset(X_train, y_train)
-        path = PartyPath(dataset_path, args.num_parties, i, args.splitter, args.weights, args.beta,
-                         args.seed, fmt='pkl')
         local_train_dataset.to_pickle(path.train_data)
-        local_test_dataset = LocalDataset(X_test, y_test)
-        local_test_dataset.to_pickle(path.test_data)
+        
+        if args.test != 0:
+            print(f"Saving test party {i}: {X.shape}")
+            local_test_dataset = LocalDataset(X_test, y_test)
+            local_test_dataset.to_pickle(path.test_data)

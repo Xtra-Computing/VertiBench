@@ -88,7 +88,7 @@ class ImportanceSplitter:
 
         return party_to_feature
 
-    def split(self, X, *args, indices=None, allow_empty_party=False):
+    def split(self, X, *args, indices=None, allow_empty_party=False, split_image=False):
         """
         Split X by feature importance.
         :param allow_empty_party: [bool] whether to allow parties with zero features
@@ -105,7 +105,14 @@ class ImportanceSplitter:
         # Split the dataset according to party_to_feature
         Xs = []
         for party_id in range(self.num_parties):
-            Xs.append(X[:, party_to_feature[party_id]])
+            selected = party_to_feature[party_id] # selected feature ids
+            if split_image:
+                # select the corresponding columns, filling the rest with 255 (white)
+                line = np.full(X.shape, 255, dtype=np.uint8)
+                line[:, selected] = X[:, selected]
+                Xs.append(line)
+            else:
+                Xs.append(X[:, selected])
 
         # Split the other datasets
         other_Xs_list = []
@@ -402,11 +409,17 @@ class CorrelationSplitter:
         # split X according to the permutation order
         X_split = []
         for feature_ids in party_to_feature:
-            X_split.append(X[:, feature_ids])
+            if 'split_image' in kwargs and kwargs['split_image']:
+                line = np.full(X.shape, 255, dtype=np.uint8)
+                line[:, feature_ids] = X[:, feature_ids]
+                X_split.append(line)
+            else:
+                X_split.append(X[:, feature_ids])
+
         return tuple(X_split)
 
     def fit_split(self, X, n_elites=20, n_offsprings=70, n_mutants=10, n_gen=100, bias=0.7, verbose=False, beta=1.,
-                  term_tol=1e-4, term_period=10):
+                  term_tol=1e-4, term_period=10, split_image=False):
         """
         Calculate the min and max mcor of the overall correlation score. Then use BRKGA to find the best order of
         features that minimizes the difference between the mean of mcor and the target mcor.
@@ -429,7 +442,7 @@ class CorrelationSplitter:
         :return: (X1, X2, ..., Xn) [np.ndarray, ...] where n is the number of parties
         """
         self.fit(X, n_elites, n_offsprings, n_mutants, n_gen, bias, verbose)
-        return self.split(X, n_elites, n_offsprings, n_mutants, n_gen, bias, verbose, beta, term_tol, term_period)
+        return self.split(X, n_elites, n_offsprings, n_mutants, n_gen, bias, verbose, beta, term_tol, term_period, split_image)
 
     def visualize(self, *args, **kwargs):
         return self.evaluator.visualize(*args, **kwargs)
