@@ -318,7 +318,7 @@ class CorrelationSplitter:
         self.max_mcor = -res_max.F[0]
         print(f"max_mcor: {self.max_mcor}")
 
-    def split(self, X, n_elites=20, n_offsprings=70, n_mutants=10, n_gen=100, bias=0.7, verbose=False,
+    def split_indices(self, X, n_elites=20, n_offsprings=70, n_mutants=10, n_gen=100, bias=0.7, verbose=False,
               beta=0.5, term_tol=1e-4, term_period=10):
         """
         Use BRKGA to find the best order of features that minimizes the difference between the mean of mcor and the
@@ -355,7 +355,8 @@ class CorrelationSplitter:
         # find the best permutation order that makes the mcor closest to the target mcor
         # target_mcor = beta * max_mcor + (1 - beta) * min_mcor
         res_beta = minimize(
-            self.CorrBestMatchProblem(self.evaluator.corr, self.evaluator.n_features_on_party, beta, self.min_mcor, self.max_mcor,
+            self.CorrBestMatchProblem(self.evaluator.corr, self.evaluator.n_features_on_party, beta, self.min_mcor,
+                                      self.max_mcor,
                                       evaluator=self.evaluator, runner=self.runner),
             algorithm,
             termination,
@@ -377,11 +378,30 @@ class CorrelationSplitter:
             end = party_cut_points[i + 1]
             self.best_feature_per_party.append(np.sort(self.best_permutation[start:end]))
         assert (np.sort(np.concatenate(self.best_feature_per_party)) == np.arange(X.shape[1])).all()
-        # print(f"Feature ids on each party: {feature_ids_on_party}")
+        return self.best_feature_per_party
+
+    def split(self, X, indices=None, **kwargs):
+        """
+        Use BRKGA to find the best order of features that minimizes the difference between the mean of mcor and the
+        target. split() assumes that the min and max mcor have been calculated by fit().
+        Required parameters:
+        :param X: [np.ndarray] 2D dataset
+
+        Optional parameters: (BRKGA parameters)
+        :param indices: (np.ndarray) precalculated indices of features in the order of importance. If not provided,
+                                    BRKGA will be used to find the best order.
+        :param kwargs: (dict) other parameters for split_indices()
+
+        :return: (np.ndarray) Xs. Split dataset of X
+        """
+        if indices is None:
+            party_to_feature = self.split_indices(X, **kwargs)
+        else:
+            party_to_feature = indices
 
         # split X according to the permutation order
         X_split = []
-        for feature_ids in self.best_feature_per_party:
+        for feature_ids in party_to_feature:
             X_split.append(X[:, feature_ids])
         return tuple(X_split)
 
