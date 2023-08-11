@@ -79,7 +79,7 @@ def split_vertical_data(*Xs, num_parties=4,
     elif splitter == 'corr':
         evaluator = CorrelationEvaluator(corr_func=corr_func, gpu_id=gpu_id)
         splitter = CorrelationSplitter(num_parties, evaluator, seed, gpu_id=gpu_id, n_jobs=n_jobs)
-        Xs = splitter.fit_split(X, beta=beta, verbose=verbose, split_image=split_image)
+        Xs = splitter.splitXs(*Xs, beta=beta, verbose=verbose, split_image=split_image)
     else:
         raise NotImplementedError(f"Splitter {splitter} is not implemented. splitter should be in ['imp', 'corr']")
 
@@ -128,7 +128,8 @@ if __name__ == '__main__':
                                 gpu_id=args.gpu_id,
                                 n_jobs=args.jobs,
                                 verbose=args.verbose,
-                                split_image=args.split_image)
+                                split_image=args.split_image,
+                                corr_func="spearmanr_pandas")
     end_time = time.time()
     print(f"Time cost: {end_time - start_time:.2f}s")
 

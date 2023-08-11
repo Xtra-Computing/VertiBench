@@ -413,8 +413,34 @@ class CorrelationSplitter:
             self.best_feature_per_party.append(np.sort(self.best_permutation[start:end]))
         assert (np.sort(np.concatenate(self.best_feature_per_party)) == np.arange(X.shape[1])).all()
         return self.best_feature_per_party
+    
+    
+    def splitXs(self, *Xs, indices=None, split_image=False, **kwargs):
+        """
+        same as self.split
+        """
+        ans = []
+        if indices is None:
+            all_X = np.concatenate(Xs, axis=0)
+            party_to_feature = self.split_indices(all_X, **kwargs)
+        else:
+            party_to_feature = indices
 
-    def split(self, X, indices=None, split_image=False, **kwargs):
+        for X in Xs:
+            Xparties = []
+            for i in range(self.num_parties):
+                selected = party_to_feature[i]
+                if split_image:
+                    line = np.full(X.shape, 255, dtype=np.uint8)
+                    line[:, feature_ids] = X[:, feature_ids]
+                else:
+                    line = X[:, selected]
+                Xparties.append(line)
+            ans.append(Xparties)
+        return ans
+
+    @deprecated
+    def __split(self, X, indices=None, split_image=False, **kwargs):
         """
         Use BRKGA to find the best order of features that minimizes the difference between the mean of mcor and the
         target. split() assumes that the min and max mcor have been calculated by fit().
@@ -469,6 +495,13 @@ class CorrelationSplitter:
         """
         self.fit(X, **kwargs)
         return self.split(X, **kwargs)
+    
+
+    def fit_splitXs(self, *Xs, **kwargs):
+        self.fit(X, **kwargs)
+        return self.splitXs(*Xs, **kwargs)
+
+
 
     def visualize(self, *args, **kwargs):
         return self.evaluator.visualize(*args, **kwargs)
