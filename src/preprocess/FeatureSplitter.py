@@ -1,6 +1,6 @@
 from numbers import Real
 import warnings
-
+import deprecated
 import cachetools
 
 import numpy as np
@@ -439,8 +439,8 @@ class CorrelationSplitter:
             ans.append(Xparties)
         return ans
 
-    @deprecated
-    def __split(self, X, indices=None, split_image=False, **kwargs):
+    # deprecated
+    def split(self, X, indices=None, split_image=False, **kwargs):
         """
         Use BRKGA to find the best order of features that minimizes the difference between the mean of mcor and the
         target. split() assumes that the min and max mcor have been calculated by fit().
@@ -454,6 +454,7 @@ class CorrelationSplitter:
 
         :return: (np.ndarray) Xs. Split dataset of X
         """
+        raise DeprecationWarning("Use splitXs instead")
         if indices is None:
             party_to_feature = self.split_indices(X, **kwargs)
         else:
@@ -498,6 +499,7 @@ class CorrelationSplitter:
     
 
     def fit_splitXs(self, *Xs, **kwargs):
+        X = np.concatenate(Xs, axis=0)
         self.fit(X, **kwargs)
         return self.splitXs(*Xs, **kwargs)
 
