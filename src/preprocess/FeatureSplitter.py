@@ -432,7 +432,7 @@ class CorrelationSplitter:
                 selected = party_to_feature[i]
                 if split_image:
                     line = np.full(X.shape, 255, dtype=np.uint8)
-                    line[:, feature_ids] = X[:, feature_ids]
+                    line[:, selected] = X[:, selected]
                 else:
                     line = X[:, selected]
                 Xparties.append(line)
