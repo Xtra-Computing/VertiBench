@@ -87,7 +87,7 @@ def split_vertical_data(*Xs, num_parties=4,
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--dataset_paths', '-dp', type=str, nargs='+', help="paths of the datasets to be split (one or multiple with the same columns)")
+    parser.add_argument('dataset_paths', type=str, nargs='+', help="paths of the datasets to be split (one or multiple with the same columns)")
     parser.add_argument('--num_parties', '-p', type=int)
     parser.add_argument('--splitter', '-sp', type=str, default='imp', help="splitter type, should be in ['imp', 'corr']")
     parser.add_argument('--weights', '-w', type=float, default=1, help="weights for the ImportanceSplitter")
