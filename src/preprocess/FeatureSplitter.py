@@ -87,6 +87,32 @@ class ImportanceSplitter:
                 "The number of features should be the same as the number of columns of X"
 
         return party_to_feature
+    
+    def splitXs(self, *Xs, indices=None, allow_empty_party=False, split_image=False):
+        assert len(Xs) > 0, "At least one dataset should be given"
+        ans = []
+        
+        # calculate the indices for each party for all datasets
+        if indices is None:
+            allX = np.concatenate(Xs, axis=0)
+            party_to_feature = self.split_indices(allX, allow_empty_party=allow_empty_party)
+        else:
+            party_to_feature = indices
+        
+        # split each dataset
+        for X in Xs:
+            Xparties = []
+            for i in range(self.num_parties):
+                selected = party_to_feature[i] # selected column_ids
+                if split_image:
+                    # select the corresponding columns, filling the rest with 255 (white)
+                    line = np.full(X.shape, 255, dtype=np.uint8)
+                    line[:, selected] = X[:, selected]
+                else:
+                    line = X[:, selected]
+                Xparties.append(line)
+            ans.append(Xparties)
+        return ans
 
     def split(self, X, *args, indices=None, allow_empty_party=False, split_image=False):
         """
