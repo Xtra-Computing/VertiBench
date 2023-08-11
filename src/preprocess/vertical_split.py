@@ -10,7 +10,7 @@ import time
 
 import numpy as np
 import pandas as pd
-from scipy.stats import spearmanr, hmean, gmean
+from scipy.stats import hmean, gmean
 import torch
 
 # add src to python path
@@ -79,7 +79,13 @@ def split_vertical_data(X, num_parties,
     elif splitter == 'corr':
         evaluator = CorrelationEvaluator(corr_func=corr_func, gpu_id=gpu_id)
         splitter = CorrelationSplitter(num_parties, evaluator, seed, gpu_id=gpu_id, n_jobs=n_jobs)
-        Xs = splitter.fit_split(X, beta=beta, verbose=verbose, split_image=split_image)
+        Xs = splitter.fit_split(X, beta=beta, verbose=verbose, split_image=split_image, 
+        n_elites=20*10, n_offsprings=70*10, n_mutants=10*10)
+
+
+        """
+        X, n_elites=20, n_offsprings=70, n_mutants=10, n_gen=100, bias=0.7, verbose=False, beta=1.,
+                  term_tol=1e-4, term_period=10"""
     else:
         raise NotImplementedError(f"Splitter {splitter} is not implemented. splitter should be in ['imp', 'corr']")
 

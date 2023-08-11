@@ -276,7 +276,7 @@ class CorrelationSplitter:
         assert self.min_mcor is not None, "self.min_mcor is None. Please call fit() first."
         assert self.max_mcor is not None, "self.max_mcor is None. Please call fit() first."
 
-    def fit(self, X, n_elites=20, n_offsprings=70, n_mutants=10, n_gen=100, bias=0.7, verbose=False):
+    def fit(self, X, n_elites=20, n_offsprings=70, n_mutants=10, n_gen=100, bias=0.7, verbose=False, **kwargs):
         """
         Calculate the min and max mcor of the overall correlation score.
         Required parameters:
@@ -289,6 +289,7 @@ class CorrelationSplitter:
         :param n_gen: (int) number of generations in BRKGA
         :param bias: (float) bias of BRKGA
         :param verbose: (bool) whether to print the progress
+        :param kwargs: other unused args
         """
         self.evaluator.corr = self.evaluator.corr_func(X)
         self.evaluator.n_features_on_party = self.split_num_features_equal(X.shape[1], self.num_parties)
@@ -387,7 +388,7 @@ class CorrelationSplitter:
         assert (np.sort(np.concatenate(self.best_feature_per_party)) == np.arange(X.shape[1])).all()
         return self.best_feature_per_party
 
-    def split(self, X, indices=None, **kwargs):
+    def split(self, X, indices=None, split_image=False, **kwargs):
         """
         Use BRKGA to find the best order of features that minimizes the difference between the mean of mcor and the
         target. split() assumes that the min and max mcor have been calculated by fit().
@@ -409,7 +410,7 @@ class CorrelationSplitter:
         # split X according to the permutation order
         X_split = []
         for feature_ids in party_to_feature:
-            if 'split_image' in kwargs and kwargs['split_image']:
+            if split_image:
                 line = np.full(X.shape, 255, dtype=np.uint8)
                 line[:, feature_ids] = X[:, feature_ids]
                 X_split.append(line)
@@ -418,8 +419,7 @@ class CorrelationSplitter:
 
         return tuple(X_split)
 
-    def fit_split(self, X, n_elites=20, n_offsprings=70, n_mutants=10, n_gen=100, bias=0.7, verbose=False, beta=1.,
-                  term_tol=1e-4, term_period=10, split_image=False):
+    def fit_split(self, X, **kwargs):
         """
         Calculate the min and max mcor of the overall correlation score. Then use BRKGA to find the best order of
         features that minimizes the difference between the mean of mcor and the target mcor.
@@ -441,8 +441,8 @@ class CorrelationSplitter:
 
         :return: (X1, X2, ..., Xn) [np.ndarray, ...] where n is the number of parties
         """
-        self.fit(X, n_elites, n_offsprings, n_mutants, n_gen, bias, verbose)
-        return self.split(X, n_elites, n_offsprings, n_mutants, n_gen, bias, verbose, beta, term_tol, term_period, split_image)
+        self.fit(X, **kwargs)
+        return self.split(X, **kwargs)
 
     def visualize(self, *args, **kwargs):
         return self.evaluator.visualize(*args, **kwargs)

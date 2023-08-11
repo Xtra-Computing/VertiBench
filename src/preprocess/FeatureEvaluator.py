@@ -126,7 +126,8 @@ class CorrelationEvaluator:
         :param svd_algo: [str] algorithm to use for SVD. Should be one of {'auto', 'approx', 'exact'}
         :param kwargs: [dict] other parameters for mcor_singular
         """
-        assert corr_func in ["spearmanr"], "corr_func should be spearmanr"
+        assert corr_func in ["spearmanr", "spearmanr_pandas"], "corr_func should be spearmanr or spearmanr_pandas"
+
         self.gamma = gamma
         self.corr = None
         self.n_features_on_party = None
@@ -135,15 +136,24 @@ class CorrelationEvaluator:
         assert self.svd_algo in ['auto', 'approx', 'exact'], "svd_algo should be auto, approx or exact"
         if self.gpu_id is not None:
             self.device = torch.device(f"cuda:{self.gpu_id}")
+            
             if corr_func == "spearmanr":
-                self.corr_func = self.spearmanr     # use CPU for now, a bug in GPU version
+                self.corr_func = self.spearmanr     # use CPU for now, a bug in GPU version 
+            elif corr_func == "spearmanr_pandas":
+                self.corr_func = self.spearmanr_pandas
+            else:
+                raise NotImplementedError("corr_func should be spearmanr or spearmanr_pandas")
         else:
             self.device = torch.device("cpu")
             if corr_func == "spearmanr":
                 self.corr_func = self.spearmanr
+            elif corr_func == "spearmanr_pandas":
+                self.corr_func = self.spearmanr_pandas
+
         print(f"CorrelationEvaluator uses {self.device}")
         self.mcor_kwargs = kwargs
 
+    @deprecated.deprecated(reason="use CPU for now, a bug in GPU version ")
     def spearmanr_gpu(self, X):
         """
         Calculate the correlation matrix of X using GPU
@@ -157,6 +167,18 @@ class CorrelationEvaluator:
         corr = torch.nan_to_num(corr, nan=0)
         return corr
 
+    def spearmanr_pandas(self, X):
+        with np.errstate(divide='ignore', invalid='ignore'):
+            corr = pd.DataFrame(X).corr(method='spearman').values
+            # corr = spearmanr(X).correlation <=== BUG: this cannot calculate the correlation of constant features
+        if np.isnan(corr).all():    # in case all features are constant
+            corr = np.zeros((X.shape[1], X.shape[1]))
+        else:
+            corr = np.nan_to_num(corr, nan=0)
+        if self.gpu_id is not None:
+            corr = torch.from_numpy(corr).float().to(self.device)
+        return corr
+    
     def spearmanr(self, X):
         """
         Calculate the correlation matrix of X
@@ -166,8 +188,9 @@ class CorrelationEvaluator:
         # When there are constant features in X. The correlation may be NaN, raise a warning "numpy ignore divide by
         # zero warning". We ignore this warning and replace NaN in corr with 0.
         with np.errstate(divide='ignore', invalid='ignore'):
-            corr = spearmanr(X).correlation
+            corr = spearmanr(X).correlation # <=== BUG: this cannot calculate the correlation of constant features
         if np.isnan(corr).all():    # in case all features are constant
+            raise ValueError("All features are constant, scipy have a BUG that cannot calculate the correlation.")
             corr = np.zeros((X.shape[1], X.shape[1]))
         else:
             corr = np.nan_to_num(corr, nan=0)
