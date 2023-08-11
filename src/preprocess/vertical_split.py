@@ -85,11 +85,6 @@ def split_vertical_data(*Xs, num_parties=4,
 
     return Xs
 
-def shuffle_records(seed, X : np.ndarray, y: np.ndarray):
-    assert X.shape[0] == y.shape[0]
-    random_indices = np.random.permutation(X.shape[0])
-    return X[random_indices], y[random_indices]
-
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset_paths', '-dp', type=str, nargs='+', help="paths of the datasets to be split (one or multiple with the same columns)")
@@ -144,7 +139,11 @@ if __name__ == '__main__':
     # random shuffle Xs
     if args.verbose:
         print("Random shuffle...")
-        
+    
+
+    np.random.seed(args.seed)
+    random_indices = np.random.permutation(Xs[0][0].shape[0])
+
     for i, Xparty in enumerate(Xs):
         for party_id in range(args.num_parties):
             path = PartyPath(paths[i], args.num_parties, party_id, args.splitter, args.weights, args.beta, args.seed, fmt='csv')
@@ -152,8 +151,9 @@ if __name__ == '__main__':
             y = ys[i]
             
             n_train_samples = int(X.shape[0] * (1 - args.test))
-            X, y = shuffle_records(args.seed, X, y)
-        
+
+            X, y = X[random_indices], y[random_indices]
+
             print(f"Saving train party {i}: {X.shape}")
             X_train, y_train = X[:n_train_samples], y[:n_train_samples]
             local_train_dataset = LocalDataset(X_train, y_train)
@@ -164,3 +164,5 @@ if __name__ == '__main__':
                 X_test, y_test = X[n_train_samples:], y[n_train_samples:]
                 local_test_dataset = LocalDataset(X_test, y_test)
                 local_test_dataset.to_pickle(path.test_data)
+
+                
