@@ -49,80 +49,56 @@ from preprocess.FeatureEvaluator import ImportanceEvaluator, CorrelationEvaluato
 
 
 
-print("Loading data...")
-data = "gisette"
-X, y = load_svmlight_file(f"data/syn/{data}/{data}.libsvm")
-X = X.toarray()
-print("Data loaded.")
+# print("Loading data...")
+# data = "gisette"
+# X, y = load_svmlight_file(f"data/syn/{data}/{data}.libsvm")
+# X = X.toarray()
+# print("Data loaded.")
 
+from scipy.stats import spearmanr
+import time
 
-# # evenly split the features of X into 4 parties
-# print("Splitting features...")
-# Xs = np.array_split(X, 4, axis=1)
-# print("Features splitted.")
+# print("Loading data...")
+# X, y = load_svmlight_file(f"data/syn/mnist/mnist.libsvm")
+# X = X.toarray()
+# print(f"Data loaded. {X.shape=}")
 #
-# print("Evaluating...")
-# start = time.time()
-# evaluator = CorrelationEvaluator()
-# score = evaluator.fit_evaluate(Xs)
-# end = time.time()
-# print(f"Evaluation finished. Time cost: {end - start}s")
-#
-# print(score)
-
-# print("Calculate the standard variance of singular values")
-# evaluator = CorrelationEvaluator()
-# evaluator.fit([X])
-#
-#
-# start = time.time()
-# corr_mtx = torch.tensor(evaluator.corr, dtype=torch.float32).to('cuda:0')
-# EX2 = np.linalg.norm(evaluator.corr, ord='fro') ** 2 / min(evaluator.corr.shape)    # faster
-# EX = torch.norm(corr_mtx, p='nuc') / min(evaluator.corr.shape)
-# EX = EX.cpu().numpy()
-# var = np.sqrt(EX2 - EX ** 2)
-# print(f"Singular value variance: {var}, time cost: {time.time() - start}s")
-#
-#
-# start = time.time()
-# corr_mtx = torch.tensor(evaluator.corr, dtype=torch.float32).to('cuda:0')
-# _, s, _ = torch.svd_lowrank(corr_mtx, q=400, niter=4)
-# s = s.cpu().numpy()
-# shape = min(evaluator.corr.shape)
-# s_append_zero = np.concatenate((s, np.zeros(shape - s.shape[0])))
-# var1 = np.std(s_append_zero)
-# print(f"Singular value variance: {var1}, time cost: {time.time() - start}s")
-#
-#
-# print("Calculate the standard variance of singular values")
-# evaluator = CorrelationEvaluator()
-# evaluator.fit([X])
-#
-# start = time.time()
-# _, s, _ = randomized_svd(evaluator.corr, n_components=400, n_oversamples=10,
-#                          n_iter=4, random_state=0)
-# shape = min(evaluator.corr.shape)
-# s_append_zero = np.concatenate((s, np.zeros(shape - s.shape[0])))
-# var1 = np.std(s_append_zero)
-# print(f"Singular value variance: {var1}, time cost: {time.time() - start}s")
-#
-#
-#
-# start = time.time()
-# # EX2 = np.matrix.trace(evaluator.corr.T @ evaluator.corr) / evaluator.corr.shape[1]
-# EX2 = np.linalg.norm(evaluator.corr, ord='fro') ** 2 / min(evaluator.corr.shape)    # faster
-# end = time.time()
-# print(f"Time cost: {end - start}s")
-# E2X = (np.linalg.norm(evaluator.corr, ord='nuc') / min(evaluator.corr.shape)) ** 2
-# var = np.sqrt(EX2 - E2X)
-# print(f"Singular value variance: {var}, time cost: {time.time() - start}s")
-#
-# start = time.time()
-# score_var = evaluator.mcor_singular(evaluator.corr)
-# print(f"Singular value variance: {score_var}, time cost: {time.time() - start}s")
-#
-#
-#
-# higgs = pd.read_csv("data/syn/higgs/higgs.csv")
+# c = spearmanr(X, X).correlation
 # pass
+
+# c = np.random.rand(60000, 784)
+#
+# start_time = time.time()
+# evaluator = CorrelationEvaluator(gpu_id=0)
+# result_torch = evaluator.spearmanr_gpu(c)
+# print(f"Pandas time seconds: {time.time() - start_time}")
+#
+# start_time = time.time()
+# result_parallel = parallel_spearmanr(c)
+# print(f"Parallel time seconds: {time.time() - start_time}")
+#
+# start_time = time.time()
+# result_scipy = spearmanr(c).correlation
+# print(f"Scipy time seconds: {time.time() - start_time}")
+#
+# start_time = time.time()
+# result_pandas = pd.DataFrame(c).corr(method='spearman')
+# print(f"Pandas time seconds: {time.time() - start_time}")
+#
+# assert np.allclose(result_torch, result_scipy)
+# assert np.allclose(result_torch, result_pandas.values)
+#
+
+
+a = [1, 1, 1]
+b = [0, 0, 0]
+
+print(spearmanr(a, b))
+
+a_ = a[:]
+a_[0] += 1e-6
+b_ = b[:]
+b_[0] += 1e-6
+print(spearmanr(a_, b_))
+
 
