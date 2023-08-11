@@ -141,13 +141,15 @@ if __name__ == '__main__':
         print("Random shuffle...")
     
 
-    np.random.seed(args.seed)
-    random_indices = np.random.permutation(Xs[0][0].shape[0])
+    
 
     for i, Xparty in enumerate(Xs):
+        np.random.seed(args.seed)
+        random_indices = np.random.permutation(Xparty[0].shape[0])
+
         for party_id in range(args.num_parties):
-            path = PartyPath(paths[i], args.num_parties, party_id, args.splitter, args.weights, args.beta, args.seed, fmt='csv')
-            X = Xparty[party_id]
+            path = PartyPath(paths[i], args.num_parties, party_id, args.splitter, args.weights, args.beta, args.seed, fmt='pkl')
+            X = Xparty[party_id]    
             y = ys[i]
             
             n_train_samples = int(X.shape[0] * (1 - args.test))
