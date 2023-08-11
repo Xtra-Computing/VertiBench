@@ -262,9 +262,9 @@ class CorrelationEvaluator:
         # EX = torch.norm(corr, p='nuc') / min(corr.shape)
         # score = torch.sqrt(EX2 - EX ** 2)
 
-        vals = torch.linalg.svdvals(corr)
-        score = torch.std(vals)
-
+        singular_values = torch.linalg.svdvals(corr)
+        singular_shape = min(corr.shape)
+        score = torch.std(singular_values)
         # end_time = time.time()
         # print(f"Time for calculating the correlation score: {end_time - start_time}")
         return float(score.item())

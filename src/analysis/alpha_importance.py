@@ -7,6 +7,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+
 from preprocess.FeatureEvaluator import ImportanceEvaluator
 from preprocess.FeatureSplitter import ImportanceSplitter
 
