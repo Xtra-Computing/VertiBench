@@ -99,6 +99,8 @@ if __name__ == '__main__':
     parser.add_argument('--verbose', '-v', action='store_true')
     parser.add_argument('--eval-time', '-et', action='store_true', help="whether to evaluate the time cost. If True, "
                                                                         "saving dataset will be skipped.")
+    parser.add_argument('--corr-func', '-cf', type=str, default='spearmanr',
+                        help="correlation function for the CorrelationSplitter, should be in ['spearmanr', 'spearmann_pandas']")
     parser.add_argument('--split-image', '-si', default=False, action='store_true', help="whether to split image dataset")
 
     args = parser.parse_args()
@@ -106,8 +108,7 @@ if __name__ == '__main__':
     if args.jobs > 1:
         warnings.warn("Multi-threading has bugs. Set n_jobs=1 instead.")
         args.jobs = 1
-    
-    
+
     paths = []
     Xs = []
     ys = []
@@ -120,7 +121,7 @@ if __name__ == '__main__':
         ys.append(y)
 
     start_time = time.time()
-    Xs = split_vertical_data(*Xs, num_parties=args.num_parties,
+    Xs_split = split_vertical_data(*Xs, num_parties=args.num_parties,
                                 splitter=args.splitter,
                                 weights=args.weights,
                                 beta=args.beta,
@@ -129,7 +130,7 @@ if __name__ == '__main__':
                                 n_jobs=args.jobs,
                                 verbose=args.verbose,
                                 split_image=args.split_image,
-                                corr_func="spearmanr_pandas")
+                                corr_func=args.corr_func)
     end_time = time.time()
     print(f"Time cost: {end_time - start_time:.2f}s")
 
@@ -140,11 +141,8 @@ if __name__ == '__main__':
     # random shuffle Xs
     if args.verbose:
         print("Random shuffle...")
-    
 
-    
-
-    for i, Xparty in enumerate(Xs):
+    for i, Xparty in enumerate(Xs_split):
         np.random.seed(args.seed)
         random_indices = np.random.permutation(Xparty[0].shape[0])
 
