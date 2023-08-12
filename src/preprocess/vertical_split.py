@@ -155,13 +155,13 @@ if __name__ == '__main__':
 
             X, y = X[random_indices], y[random_indices]
 
-            print(f"Saving train party {i}: {X.shape}")
+            print(f"Saving train party {party_id}: {X.shape}")
             X_train, y_train = X[:n_train_samples], y[:n_train_samples]
             local_train_dataset = LocalDataset(X_train, y_train)
             local_train_dataset.to_pickle(path.train_data)
             
             if args.test != 0:
-                print(f"Saving test party {i}: {X.shape}")
+                print(f"Saving test party {party_id}: {X.shape}")
                 X_test, y_test = X[n_train_samples:], y[n_train_samples:]
                 local_test_dataset = LocalDataset(X_test, y_test)
                 local_test_dataset.to_pickle(path.test_data)
