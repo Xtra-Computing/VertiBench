@@ -440,6 +440,7 @@ class CorrelationSplitter:
         return ans
 
     # deprecated
+    @deprecated.deprecated(reason="Use splitXs instead")
     def split(self, X, indices=None, split_image=False, **kwargs):
         """
         Use BRKGA to find the best order of features that minimizes the difference between the mean of mcor and the
@@ -454,7 +455,6 @@ class CorrelationSplitter:
 
         :return: (np.ndarray) Xs. Split dataset of X
         """
-        raise DeprecationWarning("Use splitXs instead")
         if indices is None:
             party_to_feature = self.split_indices(X, **kwargs)
         else:
@@ -472,6 +472,7 @@ class CorrelationSplitter:
 
         return tuple(X_split)
 
+    @deprecated.deprecated(reason="Use fit_splitXs instead")
     def fit_split(self, X, **kwargs):
         """
         Calculate the min and max mcor of the overall correlation score. Then use BRKGA to find the best order of
@@ -496,14 +497,11 @@ class CorrelationSplitter:
         """
         self.fit(X, **kwargs)
         return self.split(X, **kwargs)
-    
 
     def fit_splitXs(self, *Xs, **kwargs):
         X = np.concatenate(Xs, axis=0)
         self.fit(X, **kwargs)
         return self.splitXs(*Xs, **kwargs)
-
-
 
     def visualize(self, *args, **kwargs):
         return self.evaluator.visualize(*args, **kwargs)
@@ -533,9 +531,41 @@ class CorrelationSplitter:
         est_alpha = (self.num_parties - 1 - self.num_parties ** 2 * score_var) / (self.num_parties ** 3 * score_var)
         return est_alpha
 
+class SimpleSplitter:
+    def __init__(self, num_parties):
+        self.num_parties = num_parties
 
+    def split_indices(self, n_features):
+        """
+        Split the indices of features into num_parties parts
+        :param n_features: [int] number of features
+        :return: [list of np.ndarray] indices of features for each party
+        """
+        indices = np.arange(n_features)
+        return np.array_split(indices, self.num_parties)
 
+    def split(self, X, indices=None):
+        if indices is None:
+            indices = self.split_indices(X.shape[1])
 
+        # split X
+        Xs = []
+        for feature_ids in indices:
+            Xs.append(X[:, feature_ids])
+        return Xs
+
+    def splitXs(self, *Xs, indices=None):
+        if indices is None:
+            indices = self.split_indices(Xs[0].shape[1])
+
+        # split X
+        ans = []
+        for X in Xs:
+            Xparties = []
+            for feature_ids in indices:
+                Xparties.append(X[:, feature_ids])
+            ans.append(Xparties)
+        return ans
 
 
 

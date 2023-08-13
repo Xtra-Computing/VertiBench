@@ -17,13 +17,13 @@ import torch
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 from preprocess.FeatureEvaluator import ImportanceEvaluator, CorrelationEvaluator
-from preprocess.FeatureSplitter import ImportanceSplitter, CorrelationSplitter
+from preprocess.FeatureSplitter import ImportanceSplitter, CorrelationSplitter, SimpleSplitter
 from dataset.LocalDataset import LocalDataset
 from dataset.GlobalDataset import GlobalDataset
 from utils.utils import PartyPath
 
 
-def split_vertical_data(*Xs, num_parties=4,
+def split_vertical_data(*X, num_parties=4,
                         splitter='imp',
                         weights=1,
                         beta=1,
@@ -68,20 +68,23 @@ def split_vertical_data(*Xs, num_parties=4,
     """
 
     # check parameters
-    assert isinstance(Xs, tuple), "data should be a tuple of numpy array"
-    assert splitter in ['imp', 'corr'], "splitter should be in ['imp', 'corr']"
+    # assert isinstance(Xs, tuple), "data should be a tuple of numpy array"
+    assert splitter in ['imp', 'corr', 'simple'], "splitter should be in ['imp', 'corr', 'simple']"
     assert weights is None or np.all(np.array(weights) > 0), "weights should be positive"
 
     # split data
     if splitter == 'imp':
         splitter = ImportanceSplitter(num_parties, weights, seed)
-        Xs = splitter.splitXs(*Xs, allow_empty_party=False, split_image=split_image)     # by default, we do not allow empty parties
+        Xs = splitter.splitXs(*X, allow_empty_party=False, split_image=split_image)     # by default, we do not allow empty parties
     elif splitter == 'corr':
         evaluator = CorrelationEvaluator(corr_func=corr_func, gpu_id=gpu_id)
         splitter = CorrelationSplitter(num_parties, evaluator, seed, gpu_id=gpu_id, n_jobs=n_jobs)
-        Xs = splitter.fit_splitXs(*Xs, beta=beta, verbose=verbose, split_image=split_image)
+        Xs = splitter.fit_splitXs(*X, beta=beta, verbose=verbose, split_image=split_image)
+    elif splitter == 'simple':
+        splitter = SimpleSplitter(num_parties)
+        Xs = splitter.splitXs(*X)
     else:
-        raise NotImplementedError(f"Splitter {splitter} is not implemented. splitter should be in ['imp', 'corr']")
+        raise NotImplementedError(f"Splitter {splitter} is not implemented. splitter should be in ['imp', 'corr', 'simple']")
 
     return Xs
 
@@ -89,7 +92,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('dataset_paths', type=str, nargs='+', help="paths of the datasets to be split (one or multiple with the same columns)")
     parser.add_argument('--num_parties', '-p', type=int)
-    parser.add_argument('--splitter', '-sp', type=str, default='imp', help="splitter type, should be in ['imp', 'corr']")
+    parser.add_argument('--splitter', '-sp', type=str, default='imp', help="splitter type, should be in ['imp', 'corr', 'simple']")
     parser.add_argument('--weights', '-w', type=float, default=1, help="weights for the ImportanceSplitter")
     parser.add_argument('--beta', '-b', type=float, default=1, help="beta for the CorrelationSplitter")
     parser.add_argument('--seed', '-s', type=int, default=None)

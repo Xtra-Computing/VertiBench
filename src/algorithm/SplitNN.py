@@ -1,4 +1,5 @@
 import warnings
+
 warnings.filterwarnings("ignore", message=".*The 'nopython' keyword.*")
 from typing import Callable
 import argparse
@@ -20,6 +21,7 @@ from tqdm import tqdm
 # add src to python path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
+from dataset.VehicleDataset import VehicleDataset
 from dataset import LocalDataset, VFLRawDataset, VFLAlignedDataset
 from dataset.VFLDataset import VFLSynAlignedDataset
 from dataset.SatelliteDataset import SatelliteDataset, SatelliteGlobalDataset
@@ -344,10 +346,6 @@ if __name__ == '__main__':
     parser.add_argument('--seed', '-s', type=int, default=0, help="random seed")
     args = parser.parse_args()
 
-    path = PartyPath(f"data/syn/{args.dataset}", args.n_parties, 0, args.splitter, args.weights, args.beta,
-                     args.seed, fmt='pkl', comm_root="log")
-    comm_logger = CommLogger(args.n_parties, path.comm_log)
-
     if args.dataset == 'satellite':
         # global_dataset = SatelliteGlobalDataset("data/real/satellite/clean")
         # train_global_dataset, test_global_dataset = global_dataset.split_train_test(test_ratio=0.2, seed=args.seed)
@@ -360,6 +358,20 @@ if __name__ == '__main__':
         test_dataset = SatelliteDataset.from_pickle("data/real/satellite/cache", 'test', n_parties=args.n_parties,
                                                     primary_party_id=args.primary_party, n_jobs=8)
         model = 'resnet'
+        path = PartyPath(f"data/real/{args.dataset}", args.n_parties, 0, fmt='pkl', comm_root="log")
+        comm_logger = CommLogger(args.n_parties, path.comm_log)
+    elif args.dataset == 'vehicle':
+        train_dataset = VFLSynAlignedDataset.from_pickle(f"data/real/{args.dataset}/processed", f'{args.dataset}', args.n_parties,
+                                                      primary_party_id=args.primary_party, splitter='simple',
+                                                      weight=args.weights, beta=args.beta, seed=args.seed, type='train')
+        train_dataset.shift_y_(-1)  # the original labels are in {1,2,3}, shift them to {0,1,2}
+        test_dataset = VFLSynAlignedDataset.from_pickle(f"data/real/{args.dataset}/processed", f'{args.dataset}', args.n_parties,
+                                                        primary_party_id=args.primary_party, splitter='simple',
+                                                        weight=args.weights, beta=args.beta, seed=args.seed, type='test')
+        test_dataset.shift_y_(-1)
+        model = 'mlp'
+        path = PartyPath(f"data/real/{args.dataset}", args.n_parties, 0, fmt='pkl', comm_root="log")
+        comm_logger = CommLogger(args.n_parties, path.comm_log)
     else:
         # Note: torch.compile() in torch 2.0 significantly harms the accuracy with little speed up
         train_dataset = VFLSynAlignedDataset.from_pickle(f"data/syn/{args.dataset}", f'{args.dataset}', args.n_parties,
@@ -369,6 +381,9 @@ if __name__ == '__main__':
                                                      primary_party_id=args.primary_party, splitter=args.splitter,
                                                      weight=args.weights, beta=args.beta, seed=args.seed, type='test')
         model = 'mlp'
+        path = PartyPath(f"data/syn/{args.dataset}", args.n_parties, 0, args.splitter, args.weights, args.beta,
+                         args.seed, fmt='pkl', comm_root="log")
+        comm_logger = CommLogger(args.n_parties, path.comm_log)
 
     # create the model
     if args.n_classes == 1:  # regression
