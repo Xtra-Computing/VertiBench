@@ -372,6 +372,20 @@ if __name__ == '__main__':
         model = 'mlp'
         path = PartyPath(f"data/real/{args.dataset}", args.n_parties, 0, fmt='pkl', comm_root="log")
         comm_logger = CommLogger(args.n_parties, path.comm_log)
+    elif args.dataset == 'wide':
+        train_dataset = VFLSynAlignedDataset.from_pickle(f"data/real/nus-wide/processed", f'{args.dataset}',
+                                                         args.n_parties,
+                                                         primary_party_id=args.primary_party, splitter='simple',
+                                                         weight=args.weights, beta=args.beta, seed=args.seed,
+                                                         type='train')
+        test_dataset = VFLSynAlignedDataset.from_pickle(f"data/real/nus-wide/processed", f'{args.dataset}',
+                                                        args.n_parties,
+                                                        primary_party_id=args.primary_party, splitter='simple',
+                                                        weight=args.weights, beta=args.beta, seed=args.seed,
+                                                        type='test')
+        model = 'mlp'
+        path = PartyPath(f"data/real/{args.dataset}", args.n_parties, 0, fmt='pkl', comm_root="log")
+        comm_logger = CommLogger(args.n_parties, path.comm_log)
     else:
         # Note: torch.compile() in torch 2.0 significantly harms the accuracy with little speed up
         train_dataset = VFLSynAlignedDataset.from_pickle(f"data/syn/{args.dataset}", f'{args.dataset}', args.n_parties,
