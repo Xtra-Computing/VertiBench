@@ -17,13 +17,13 @@ import torch
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 from preprocess.FeatureEvaluator import ImportanceEvaluator, CorrelationEvaluator
-from preprocess.FeatureSplitter import ImportanceSplitter, CorrelationSplitter
+from preprocess.FeatureSplitter import ImportanceSplitter, CorrelationSplitter, SimpleSplitter
 from dataset.LocalDataset import LocalDataset
 from dataset.GlobalDataset import GlobalDataset
 from utils.utils import PartyPath
 
 
-def split_vertical_data(*Xs, num_parties=4,
+def split_vertical_data(*X, num_parties=4,
                         splitter='imp',
                         weights=1,
                         beta=1,
@@ -68,20 +68,23 @@ def split_vertical_data(*Xs, num_parties=4,
     """
 
     # check parameters
-    assert isinstance(Xs, tuple), "data should be a tuple of numpy array"
-    assert splitter in ['imp', 'corr'], "splitter should be in ['imp', 'corr']"
+    # assert isinstance(Xs, tuple), "data should be a tuple of numpy array"
+    assert splitter in ['imp', 'corr', 'simple'], "splitter should be in ['imp', 'corr', 'simple']"
     assert weights is None or np.all(np.array(weights) > 0), "weights should be positive"
 
     # split data
     if splitter == 'imp':
         splitter = ImportanceSplitter(num_parties, weights, seed)
-        Xs = splitter.splitXs(*Xs, allow_empty_party=False, split_image=split_image)     # by default, we do not allow empty parties
+        Xs = splitter.splitXs(*X, allow_empty_party=False, split_image=split_image)     # by default, we do not allow empty parties
     elif splitter == 'corr':
         evaluator = CorrelationEvaluator(corr_func=corr_func, gpu_id=gpu_id)
         splitter = CorrelationSplitter(num_parties, evaluator, seed, gpu_id=gpu_id, n_jobs=n_jobs)
-        Xs = splitter.fit_splitXs(*Xs, beta=beta, verbose=verbose, split_image=split_image)
+        Xs = splitter.fit_splitXs(*X, beta=beta, verbose=verbose, split_image=split_image)
+    elif splitter == 'simple':
+        splitter = SimpleSplitter(num_parties)
+        Xs = splitter.splitXs(*X)
     else:
-        raise NotImplementedError(f"Splitter {splitter} is not implemented. splitter should be in ['imp', 'corr']")
+        raise NotImplementedError(f"Splitter {splitter} is not implemented. splitter should be in ['imp', 'corr', 'simple']")
 
     return Xs
 
@@ -89,7 +92,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('dataset_paths', type=str, nargs='+', help="paths of the datasets to be split (one or multiple with the same columns)")
     parser.add_argument('--num_parties', '-p', type=int)
-    parser.add_argument('--splitter', '-sp', type=str, default='imp', help="splitter type, should be in ['imp', 'corr']")
+    parser.add_argument('--splitter', '-sp', type=str, default='imp', help="splitter type, should be in ['imp', 'corr', 'simple']")
     parser.add_argument('--weights', '-w', type=float, default=1, help="weights for the ImportanceSplitter")
     parser.add_argument('--beta', '-b', type=float, default=1, help="beta for the CorrelationSplitter")
     parser.add_argument('--seed', '-s', type=int, default=None)
@@ -99,6 +102,8 @@ if __name__ == '__main__':
     parser.add_argument('--verbose', '-v', action='store_true')
     parser.add_argument('--eval-time', '-et', action='store_true', help="whether to evaluate the time cost. If True, "
                                                                         "saving dataset will be skipped.")
+    parser.add_argument('--corr-func', '-cf', type=str, default='spearmanr',
+                        help="correlation function for the CorrelationSplitter, should be in ['spearmanr', 'spearmann_pandas']")
     parser.add_argument('--split-image', '-si', default=False, action='store_true', help="whether to split image dataset")
 
     args = parser.parse_args()
@@ -106,8 +111,7 @@ if __name__ == '__main__':
     if args.jobs > 1:
         warnings.warn("Multi-threading has bugs. Set n_jobs=1 instead.")
         args.jobs = 1
-    
-    
+
     paths = []
     Xs = []
     ys = []
@@ -120,7 +124,7 @@ if __name__ == '__main__':
         ys.append(y)
 
     start_time = time.time()
-    Xs = split_vertical_data(*Xs, num_parties=args.num_parties,
+    Xs_split = split_vertical_data(*Xs, num_parties=args.num_parties,
                                 splitter=args.splitter,
                                 weights=args.weights,
                                 beta=args.beta,
@@ -129,7 +133,7 @@ if __name__ == '__main__':
                                 n_jobs=args.jobs,
                                 verbose=args.verbose,
                                 split_image=args.split_image,
-                                corr_func="spearmanr_pandas")
+                                corr_func=args.corr_func)
     end_time = time.time()
     print(f"Time cost: {end_time - start_time:.2f}s")
 
@@ -140,11 +144,8 @@ if __name__ == '__main__':
     # random shuffle Xs
     if args.verbose:
         print("Random shuffle...")
-    
 
-    
-
-    for i, Xparty in enumerate(Xs):
+    for i, Xparty in enumerate(Xs_split):
         np.random.seed(args.seed)
         random_indices = np.random.permutation(Xparty[0].shape[0])
 
@@ -157,13 +158,13 @@ if __name__ == '__main__':
 
             X, y = X[random_indices], y[random_indices]
 
-            print(f"Saving train party {i}: {X.shape}")
+            print(f"Saving train party {party_id}: {X.shape}")
             X_train, y_train = X[:n_train_samples], y[:n_train_samples]
             local_train_dataset = LocalDataset(X_train, y_train)
             local_train_dataset.to_pickle(path.train_data)
             
             if args.test != 0:
-                print(f"Saving test party {i}: {X.shape}")
+                print(f"Saving test party {party_id}: {X.shape}")
                 X_test, y_test = X[n_train_samples:], y[n_train_samples:]
                 local_test_dataset = LocalDataset(X_test, y_test)
                 local_test_dataset.to_pickle(path.test_data)

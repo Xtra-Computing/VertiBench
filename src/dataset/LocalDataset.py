@@ -134,3 +134,11 @@ class LocalDataset(Dataset):
             return
         scaler = MinMaxScaler(feature_range=(lower, upper))
         self.y = scaler.fit_transform(self.y.reshape(-1, 1)).reshape(-1)
+
+    def shift_y_(self, shift):
+        """
+        Shift the label by shift
+        """
+        if self.y is None:
+            return
+        self.y += shift

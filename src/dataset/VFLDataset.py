@@ -132,6 +132,10 @@ class VFLAlignedDataset(VFLDataset, Dataset):
         for local_dataset in self.local_datasets:
             local_dataset.scale_y_(lower, upper)
 
+    def shift_y_(self, shift):
+        for local_dataset in self.local_datasets:
+            local_dataset.shift_y_(shift)
+
 
 class VFLSynAlignedDataset(VFLAlignedDataset):
     def __init__(self, num_parties: int, local_datasets, primary_party_id: int = 0):

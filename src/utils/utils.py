@@ -32,9 +32,12 @@ class PartyPath:
             path = path.with_name(f"{path.stem}_party{self.n_parties}-{self.party_id}_{self.splitter}"
                                   f"_beta{self.beta:.1f}"
                                   f"{'_seed' + str(self.seed) if self.seed is not None else ''}_{type}.{self.fmt}")
+        elif self.splitter == 'simple':
+            path = path.with_name(f"{path.stem}_party{self.n_parties}-{self.party_id}"
+                                  f"_{type}.{self.fmt}")
         else:
             raise NotImplementedError(f"Splitter {self.splitter} is not implemented. "
-                                      f"Splitter should be in ['imp', 'corr']")
+                                      f"Splitter should be in ['imp', 'corr', 'simple']")
         return str(path)
 
     @property
@@ -58,9 +61,11 @@ class PartyPath:
         elif self.splitter == 'corr':
             path = path / (f"{self.dataset_name}_party{self.n_parties}_{self.splitter}_beta{self.beta:.1f}"
                            f"{'_seed' + str(self.seed) if self.seed is not None else ''}.log")
+        elif self.splitter == 'simple':
+            path = path / (f"{self.dataset_name}_party{self.n_parties}_{self.splitter}.log")
         else:
             raise NotImplementedError(f"Splitter {self.splitter} is not implemented."
-                                      f" splitter should be in ['imp', 'corr']")
+                                      f" splitter should be in ['imp', 'corr', 'simple']")
         return str(path)
 
 # def party_path(dataset_path, n_parties, party_id, splitter='imp', weight=1, beta=1, seed=None, type='train',
