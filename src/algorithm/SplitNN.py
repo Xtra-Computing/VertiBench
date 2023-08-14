@@ -368,7 +368,10 @@ if __name__ == '__main__':
         test_dataset = VFLSynAlignedDataset.from_pickle(f"data/syn/{args.dataset}", f'{args.dataset}', args.n_parties,
                                                      primary_party_id=args.primary_party, splitter=args.splitter,
                                                      weight=args.weights, beta=args.beta, seed=args.seed, type='test')
-        model = 'mlp'
+        if args.dataset in ['mnist', 'cifar10']:
+            model = 'resnet'
+        else:
+            model = 'mlp'
 
     # create the model
     if args.n_classes == 1:  # regression
