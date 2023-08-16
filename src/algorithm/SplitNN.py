@@ -187,7 +187,7 @@ class SplitMLP(nn.Module):
 
 
 class SplitResNet(nn.Module):
-    def __init__(self, n_parties, channels, agg_hidden=None, out_activation=None):
+    def __init__(self, n_parties, channels, kernel_size=9, agg_hidden=None, out_activation=None):
         super().__init__()
         self.n_parties = n_parties
         self.out_activation = out_activation
@@ -197,7 +197,7 @@ class SplitResNet(nn.Module):
             resnet = resnet18(weights=None)
             local_output_dims.append(resnet.fc.in_features)
             resnet.fc = nn.Identity()
-            resnet.conv1 = nn.Conv2d(channels, 64, 9, stride=2, padding=3, bias=False)
+            resnet.conv1 = nn.Conv2d(channels, 64, kernel_size, stride=2, padding=3, bias=False)
             self.local_resnet_list.append(resnet)
             print("local output dims", local_output_dims)
         self.cut_dim = sum(local_output_dims)
@@ -363,6 +363,7 @@ if __name__ == '__main__':
                                                     primary_party_id=args.primary_party, n_jobs=8)
         model = 'resnet'
         channel = 13
+        kernel_size = 9
         path = PartyPath(f"data/real/{args.dataset}", args.n_parties, 0, fmt='pkl', comm_root="log")
         comm_logger = CommLogger(args.n_parties, path.comm_log)
     elif args.dataset == 'vehicle':
@@ -400,6 +401,7 @@ if __name__ == '__main__':
                                                       weight=args.weights, beta=args.beta, seed=args.seed, type='test')
         model = 'resnet'
         channel = 1
+        kernel_size = 9
         path = PartyPath(f"data/syn/mnist", args.n_parties, 0, fmt='pkl', comm_root="log")
         comm_logger = CommLogger(args.n_parties, path.comm_log)
     elif args.dataset == "cifar10":
@@ -411,6 +413,7 @@ if __name__ == '__main__':
                                                       weight=args.weights, beta=args.beta, seed=args.seed, type='test')
         model = 'resnet'
         channel = 3
+        kernel_size = 3
         path = PartyPath(f"data/syn/cifar10", args.n_parties, 0, fmt='pkl', comm_root="log")
         comm_logger = CommLogger(args.n_parties, path.comm_log)
     else:
@@ -453,7 +456,7 @@ if __name__ == '__main__':
         model = SplitMLP(train_dataset.local_input_channels, [[100, 100]] * args.n_parties, [200, out_dim],
                          out_activation=out_activation, comm_logger=comm_logger, primary_party=args.primary_party)
     elif model == 'resnet':
-        model = SplitResNet(args.n_parties, channel, agg_hidden=[1000, out_dim], out_activation=out_activation)
+        model = SplitResNet(args.n_parties, channel, kernel_size=kernel_size, agg_hidden=[1000, out_dim], out_activation=out_activation)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.5)
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=4)
