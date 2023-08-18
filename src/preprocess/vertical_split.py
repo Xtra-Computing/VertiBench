@@ -106,7 +106,7 @@ if __name__ == '__main__':
     parser.add_argument('--corr-func', '-cf', type=str, default='spearmanr',
                         help="correlation function for the CorrelationSplitter, should be in ['spearmanr', 'spearmann_pandas']")
     parser.add_argument('--split-image', '-si', default=False, action='store_true', help="whether to split image dataset")
-
+    parser.add_argument('--shift-y', '-shy', default=0, type=int, help="Shift the y values by a constant")
     args = parser.parse_args()
 
     if args.jobs > 1:
@@ -120,6 +120,9 @@ if __name__ == '__main__':
         if args.verbose:
             print(f"Loading dataset from {path}...")
         X, y = GlobalDataset.from_file(path, label_column=args.label_column).data
+        if args.shift_y != 0:
+            y += args.shift_y
+
         paths.append(path)
         Xs.append(X)
         ys.append(y)

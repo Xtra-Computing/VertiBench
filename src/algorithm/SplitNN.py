@@ -370,11 +370,11 @@ if __name__ == '__main__':
         train_dataset = VFLSynAlignedDataset.from_pickle(f"data/real/{args.dataset}/processed", f'{args.dataset}', args.n_parties,
                                                       primary_party_id=args.primary_party, splitter='simple',
                                                       weight=args.weights, beta=args.beta, seed=args.seed, type='train')
-        train_dataset.shift_y_(-1)  # the original labels are in {1,2,3}, shift them to {0,1,2}
+        # train_dataset.shift_y_(-1)  # the original labels are in {1,2,3}, shift them to {0,1,2}
         test_dataset = VFLSynAlignedDataset.from_pickle(f"data/real/{args.dataset}/processed", f'{args.dataset}', args.n_parties,
                                                         primary_party_id=args.primary_party, splitter='simple',
                                                         weight=args.weights, beta=args.beta, seed=args.seed, type='test')
-        test_dataset.shift_y_(-1)
+        # test_dataset.shift_y_(-1)
         model = 'mlp'
         path = PartyPath(f"data/real/{args.dataset}", args.n_parties, 0, fmt='pkl', comm_root="log")
         comm_logger = CommLogger(args.n_parties, path.comm_log)
