@@ -20,6 +20,7 @@ if __name__ == '__main__':
                              "without title and index.")
     parser.add_argument("--scale-y", "-sy", action='store_true', default=False, help="Scale the y values to [0, 1]")
     parser.add_argument("--drop-y", "-dy", action='store_true', default=False, help="Drop the y values")
+    parser.add_argument("--shift-y", "-shy", default=0, type=int, help="Shift the y values by a constant")
     args = parser.parse_args()
 
     for path in args.path:
@@ -34,6 +35,8 @@ if __name__ == '__main__':
             dataset.scale_y_()
         if args.drop_y:
             dataset.y = None
+        if args.shift_y != 0:
+            dataset.y += args.shift_y
         csv_path = pathlib.Path(path).with_suffix('.csv')
         dataset.to_csv(csv_path, type=args.type)
         print(f"Saved to {csv_path}.")
