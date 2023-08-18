@@ -15,7 +15,7 @@ from preprocess.FeatureSplitter import ImportanceSplitter
 plt.rcParams['font.size'] = 16
 
 
-def plot_alpha_vs_std(feature_importance):
+def plot_alpha_vs_std(feature_importance, metric="Shapley"):
     # split with different consistent alpha, estimate variance of feature importance
     alphas = [0.01, 0.1, 1, 10, 100, 1000]
     party_imp_stds = []
@@ -37,7 +37,7 @@ def plot_alpha_vs_std(feature_importance):
     fig, ax = plt.subplots()
     ax.plot(alphas, party_imp_stds, marker='o')
     ax.set_xlabel("$\\alpha$")
-    ax.set_ylabel("Averaged standard deviation")
+    ax.set_ylabel(f"Averaged standard deviation ({metric})")
     ax.set_xscale("log")
 
     # plot uniform distribution in -- and annotate in the left middle above the line
@@ -45,9 +45,10 @@ def plot_alpha_vs_std(feature_importance):
     ax.annotate("Random Split", xy=(0.1, uniform_std), xytext=(3, uniform_std + 1), color='red')
 
     # ax.set_title("Averaged standard deviation of party importance under different $\\alpha$ of Dirichlet split")
-    fig.savefig("fig/alpha_vs_std.png", bbox_inches='tight')
+    fig.savefig(f"fig/alpha_vs_std_{metric}.png", bbox_inches='tight')
 
-def plot_alpha_vs_mean_imp(feature_importance):
+
+def plot_alpha_vs_mean_imp(feature_importance, metric="Shapley"):
     alphas = [0.01, 0.1, 0.5, 1, 2, 4, 8, 10, 50, 100, 1000]
     alpha_others = 1
 
@@ -82,7 +83,7 @@ def plot_alpha_vs_mean_imp(feature_importance):
     ax2.set_xlabel("Scaled $\\alpha$ of $P_1$")
 
     ax.set_xlabel("Scaled $\\alpha$ of $P_0$")
-    ax.set_ylabel("Averaged party importance")
+    ax.set_ylabel(f"Averaged party importance ({metric})")
 
     # combined legend of two x-axis
     lines, labels = ax.get_legend_handles_labels()
@@ -90,7 +91,7 @@ def plot_alpha_vs_mean_imp(feature_importance):
     ax.legend(lines + lines2, labels + labels2, loc='right')
 
     # ax.set_title("Averaged first party importance under different $\\alpha$ of Dirichlet split")
-    fig.savefig("fig/alpha_vs_mean_imp.png", bbox_inches='tight')
+    fig.savefig(f"fig/alpha_vs_mean_imp_{metric}.png", bbox_inches='tight')
 
 
 

@@ -102,6 +102,7 @@ if __name__ == '__main__':
     parser.add_argument('--verbose', '-v', action='store_true')
     parser.add_argument('--eval-time', '-et', action='store_true', help="whether to evaluate the time cost. If True, "
                                                                         "saving dataset will be skipped.")
+    parser.add_argument('--label-column', '-lc', type=int, default=1, help="the column index of the label. -1 means the last column.")
     parser.add_argument('--corr-func', '-cf', type=str, default='spearmanr',
                         help="correlation function for the CorrelationSplitter, should be in ['spearmanr', 'spearmann_pandas']")
     parser.add_argument('--split-image', '-si', default=False, action='store_true', help="whether to split image dataset")
@@ -118,7 +119,7 @@ if __name__ == '__main__':
     for path in args.dataset_paths:
         if args.verbose:
             print(f"Loading dataset from {path}...")
-        X, y = GlobalDataset.from_file(path).data
+        X, y = GlobalDataset.from_file(path, label_column=args.label_column).data
         paths.append(path)
         Xs.append(X)
         ys.append(y)

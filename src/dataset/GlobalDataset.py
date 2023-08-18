@@ -34,7 +34,7 @@ class GlobalDataset(Dataset):
         return X, y
 
     @classmethod
-    def from_csv(cls, csv_path, header=None, label_col=0, has_id = False, id_col=0):
+    def from_csv(cls, csv_path, header=None, label_col=1, has_id = False, id_col=0):
         """
         Load dataset from csv file. The last column is the label, and the rest
         columns are features.
@@ -71,7 +71,7 @@ class GlobalDataset(Dataset):
         return cls(X, y)
 
     @classmethod
-    def from_file(cls, path):
+    def from_file(cls, path, label_column=1):
         """
         Load dataset from file according to the file extension.
         Parameters
@@ -80,7 +80,7 @@ class GlobalDataset(Dataset):
             path to the file
         """
         if path.endswith('.csv'):
-            return cls.from_csv(path, header=0, label_col=1, has_id=True, id_col=0)
+            return cls.from_csv(path, header=0, label_col=label_column, has_id=True, id_col=0)
         elif path.endswith('.libsvm'):
             return cls.from_libsvm(path)
         else:
