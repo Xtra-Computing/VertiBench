@@ -4,6 +4,10 @@ import sys
 import pathlib
 import warnings
 
+from numba.core.errors import NumbaDeprecationWarning, NumbaPendingDeprecationWarning
+warnings.simplefilter('ignore', category=NumbaDeprecationWarning)
+warnings.simplefilter('ignore', category=NumbaPendingDeprecationWarning)
+
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 from dataset.LocalDataset import LocalDataset
