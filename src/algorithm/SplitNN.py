@@ -379,12 +379,12 @@ if __name__ == '__main__':
         path = PartyPath(f"data/real/{args.dataset}", args.n_parties, 0, fmt='pkl', comm_root="log")
         comm_logger = CommLogger(args.n_parties, path.comm_log)
     elif args.dataset == 'wide':
-        train_dataset = VFLSynAlignedDataset.from_pickle(f"data/real/nus-wide/processed", f'{args.dataset}',
+        train_dataset = VFLSynAlignedDataset.from_pickle(f"data/real/wide/processed", f'{args.dataset}',
                                                          args.n_parties,
                                                          primary_party_id=args.primary_party, splitter='simple',
                                                          weight=args.weights, beta=args.beta, seed=args.seed,
                                                          type='train')
-        test_dataset = VFLSynAlignedDataset.from_pickle(f"data/real/nus-wide/processed", f'{args.dataset}',
+        test_dataset = VFLSynAlignedDataset.from_pickle(f"data/real/wide/processed", f'{args.dataset}',
                                                         args.n_parties,
                                                         primary_party_id=args.primary_party, splitter='simple',
                                                         weight=args.weights, beta=args.beta, seed=args.seed,
