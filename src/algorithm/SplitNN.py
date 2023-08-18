@@ -258,7 +258,7 @@ def fit(model, optimizer, loss_fn, metric_fn, train_loader, test_loader=None, ep
 
         train_score = metric_fn(train_y.data.cpu().numpy(), train_pred_y.data.cpu().numpy())
         print(datetime.datetime.now(pytz.timezone('Asia/Shanghai')).strftime("%Y-%m-%d %H:%M:%S"), f"Epoch: {epoch}, Train Loss: {total_loss / len(train_loader)}, Train Score: {train_score}")
-        if hasattr(model, 'comm_logger'):
+        if hasattr(model, 'comm_logger') and model.comm_logger is not None:
             print(datetime.datetime.now(pytz.timezone('Asia/Shanghai')).strftime("%Y-%m-%d %H:%M:%S"))
             model.comm_logger.save_log()
 
