@@ -28,13 +28,15 @@ if __name__ == '__main__':
         if pathlib.Path(path).suffix != '.pkl':
             warnings.warn(f"File {args.path} may not be a pickle file. Skipped.")
             continue
-
+        csv_path = pathlib.Path(path).with_suffix('.csv')
+        # if os.path.exists(csv_path):
+        #     warnings.warn(f"File {csv_path} already exists. Skipped.")
+        #     continue
         dataset = LocalDataset.from_pickle(path)
         if args.scale_y:
             dataset.scale_y_()
         if args.drop_y:
             dataset.y = None
-        csv_path = pathlib.Path(path).with_suffix('.csv')
         dataset.to_csv(csv_path, type=args.type)
         print(f"Saved to {csv_path}.")
 

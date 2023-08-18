@@ -75,8 +75,8 @@ if __name__ == '__main__':
     test_dataset_paths = []
     for i in range(args.n_parties):
         if args.is_real:
-            train_dataset_paths.append(os.path.join(args.root, f"{args.dataset}_party{i}_train.csv"))
-            test_dataset_paths.append(os.path.join(args.root, f"{args.dataset}_party{i}_test.csv"))
+            train_dataset_paths.append(os.path.join(args.root, f"{args.dataset}_party{args.n_parties}-{i}_train.csv"))
+            test_dataset_paths.append(os.path.join(args.root, f"{args.dataset}_party{args.n_parties}-{i}_test.csv"))
         else:
             data_path_base = os.path.join(root_path, args.dataset)
             train_dataset_paths.append(PartyPath(data_path_base, n_parties=args.n_parties, party_id=i,
