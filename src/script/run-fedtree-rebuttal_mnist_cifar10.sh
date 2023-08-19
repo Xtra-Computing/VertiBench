@@ -21,13 +21,12 @@
 #     python src/algorithm/FedTree.py -d $dataset -c $n_class -p 4 -sp corr -b 1.0 -s $i > out/fedtree/$dataset/"$dataset"_corr_w1.0_seed"$i".txt &
 #     wait
 # done
-# rm $root_dir/*seed1*.csv
 
 
 # cifar10
 dataset=cifar10
 n_class=10
-root_dir=/data/junyi/syn/$dataset
+root_dir=/data/zhaomin/VertiBench/data/syn/$dataset
 for i in 1 2 3 4
 do
     python src/preprocess/pkl_to_csv.py $root_dir/*seed$i*.pkl
@@ -46,5 +45,4 @@ do
     python src/algorithm/FedTree.py -d $dataset -c $n_class -p 4 -sp corr -b 1.0 -s $i > out/fedtree/$dataset/"$dataset"_corr_w1.0_seed"$i".txt &
     wait
 done
-# rm $root_dir/*seed"$i"*.csv
 
