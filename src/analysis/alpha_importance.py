@@ -42,7 +42,7 @@ def plot_alpha_vs_std(feature_importance, metric="Shapley"):
 
     # plot uniform distribution in -- and annotate in the left middle above the line
     ax.plot([0.01, 1000], [uniform_std, uniform_std], linestyle='--', color='red')
-    ax.annotate("Random Split", xy=(0.1, uniform_std), xytext=(3, uniform_std + 1), color='red')
+    ax.annotate("Random Split", xy=(0.1, uniform_std), xytext=(3, uniform_std * 1.1), color='red')
 
     # ax.set_title("Averaged standard deviation of party importance under different $\\alpha$ of Dirichlet split")
     fig.savefig(f"fig/alpha_vs_std_{metric}.png", bbox_inches='tight')

@@ -207,3 +207,15 @@ if __name__ == '__main__':
 
     for p in processes:
         p.join()
+
+
+"""
+Consider a two-party application on covtype dataset.
+On one party:
+torchrun --nproc_per_node=2 --nnodes=2 --node_rank=0 --master_addr=127.0.0.1 --master_port=12345 src/algorithm/DistSplitNN.py -d covtype -c 7 -m acc -p 2 -sp corr -b 0.0 -s 0 -g 0
+
+On another party:   (change only the node_rank)
+torchrun --nproc_per_node=2 --nnodes=2 --node_rank=1 --master_addr=127.0.0.1 --master_port=12345 src/algorithm/DistSplitNN.py -d covtype -c 7 -m acc -p 2 -sp corr -b 0.0 -s 0 -g 0
+
+Note that only the parameters on the primary party will be used. The parameters on the other parties are ignored.
+"""

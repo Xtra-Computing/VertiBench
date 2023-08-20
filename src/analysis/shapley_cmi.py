@@ -110,5 +110,5 @@ feature_importance = [0.08420452 0.10850604 0.10432603 0.0842274  0.11213454 0.1
     feature_importance = np.array(feature_importance)
 
     # plot alpha vs mean importance
-    plot_alpha_vs_mean_imp(feature_importance, metric="Shapley-CMI")
+    # plot_alpha_vs_mean_imp(feature_importance, metric="Shapley-CMI")
     plot_alpha_vs_std(feature_importance, metric="Shapley-CMI")
