@@ -188,7 +188,7 @@ def train(models, optimizers, epoch):  # , centers):
     Train all clients on all batches
     """
     global server_model_comp, server_optimizer_comp
-  
+
     train_size = len(train_loader)
     server_model = models[-1]
     server_optimizer = optimizers[-1]
@@ -203,40 +203,43 @@ def train(models, optimizers, epoch):  # , centers):
     if args.quant_level > 0:
         ratio = math.log(args.quant_level, 2) / 32
 
+    total_c2s = 0
+    total_s2c = 0
+
     # step=0, inputs=(100,3,32,32), targets=(100)
-    for step, (inputs, targets) in enumerate(tqdm(train_loader)):
+    for step, (inputs, targets) in enumerate(train_loader):
         # Convert from list of 3D to 4D
         inputs = np.stack(inputs, axis=1) # 或许我们不需要把 (100,174) 转换成 (174,100)？（174是feature数量）
-
         inputs = torch.from_numpy(inputs)
 
         inputs, targets = inputs.cuda(device), targets.cuda(device)
         inputs, targets = Variable(inputs), Variable(targets)
-        # Exchange embeddings
-        # print("inputs shape", inputs.shape)
+        
+        # 交换 embeddings，H_orig 是存放在 server 的 embeddings
         H_orig = [None] * num_clients # [None, None, None, None]
         
-        for i in range(num_clients):
+        for i in range(num_clients): # 取出 H_orig[i], 压缩后放入 H_orig[i]
             x_local = inputs[
                 sum(DATASET_SPLIT[:i]) : sum(DATASET_SPLIT[: (i + 1)]), :
             ]
-            # print("x_local shape", x_local.shape)
             x_local = torch.transpose(x_local, 0, 1) # 切分数据集
-            with torch.no_grad():
-                H_orig[i] = models[i](x_local)
+            with torch.no_grad(): # client[i] 跑出来结果放入 H_orig[i]
+                H_orig[i] = models[i](x_local) # float32, shape=(512,100)
 
-            # Compress embedding
+            # Compress embedding(取出 H_orig[i], 压缩后放入 H_orig[i])
+            H_orig_need_to_transfer = [None] * num_clients # This variable was added by Junyi
             if comp != "":
                 if comp == "topk" and not (epoch == 0 and step == 0):
                     # Choose top k elements based on grads_Hs[i]
                     # H_orig[i] = topk(H_orig[i], ratio)
                     H_tmp = H_orig[i].cpu().detach().numpy()
-                    num = math.ceil(H_tmp.shape[1] * (1 - ratio))
+                    num = math.ceil(H_tmp.shape[1] * (1 - ratio)) # num 个 要被置为 0
                     grads = np.abs(grads_Hs[i])
                     idx = np.argpartition(grads, num)[:num]
                     indices = idx[np.argsort((grads)[idx])]
-                    H_tmp[:, indices[:num]] = 0
-                    H_orig[i] = torch.from_numpy(H_tmp).float().cuda(device)
+                    H_tmp[:, indices[:num]] = 0 # 后面传输的时候，只传输非0的
+                    H_orig_need_to_transfer[i] = H_tmp.shape[1] - num
+                    H_orig[i] = torch.from_numpy(H_tmp).float().cuda(device) # 更新本地的 H_orig[i]
                 elif comp == "topk":
                     # If first iteration, do nothing
                     pass
@@ -252,15 +255,19 @@ def train(models, optimizers, epoch):  # , centers):
                         quant_level=args.quant_level,
                         dim=args.vecdim,
                     )
-
-        # Compress server model
+        
+        total_number1 = np.sum([h.flatten().shape for h in H_orig])
+        total_c2s += total_number1
+        
+        # 压缩 Server model （减少后续传输server model的communication开销，Train clients要用到 server model）
+        k_numbers_need_to_transfer = {} # This variable was added by Junyi
         if comp != "":
             tmp_dict = server_model.state_dict()
             for key, value in tmp_dict.items():
                 vdim = value.dim()
                 shape = value.shape
                 if comp == "topk":
-                    tmp_dict[key] = topk(value, ratio)
+                    tmp_dict[key], k_numbers_need_to_transfer[key] = topk(value, ratio)
                 elif args.vecdim == 1:
                     if vdim == 1:
                         value = value.reshape(1, -1)
@@ -278,6 +285,15 @@ def train(models, optimizers, epoch):  # , centers):
             server_model_comp.load_state_dict(tmp_dict)
         else:
             server_model_comp = server_model
+
+        # ========= 下面的 Train clients 通信统计 =========
+        # 理论情况需要传输的 float32 数量
+        total_number2 = np.sum([k_numbers_need_to_transfer[k] for k in k_numbers_need_to_transfer.keys()]) * num_clients
+        total_s2c += total_number2 # total float32 numbers from server to client
+        
+        total_number3 = np.sum([h.flatten().shape for h in H_orig[1:]]) * num_clients # 不统计自己的 H_orig[i]，因为自己已经算过了。又因为 H_orig[i] 的shape都一样，所以随便扔掉一个就行
+        total_s2c += total_number3
+        # ========= 下面的 Train clients 通信统计 =========   
 
         # Train clients
         for i in range(num_clients):
@@ -297,7 +313,7 @@ def train(models, optimizers, epoch):  # , centers):
                 # compute output
                 outputs = model(x_local)
                 H[i] = outputs
-                outputs = server_model_comp(torch.cat(H, axis=1))
+                outputs = server_model_comp(torch.cat(H, axis=1)) # 用 server 传输过来的 server_model_comp 来计算
                 loss = criterion(outputs, targets)
 
                 # compute gradient and do gradient step
@@ -308,14 +324,14 @@ def train(models, optimizers, epoch):  # , centers):
                 for param in model.parameters():
                     params.append(param.grad)
                 params[-1] = params[-1].detach().cpu().numpy()
-                grads_Hs[i] = np.array(params[-1])
+                grads_Hs[i] = np.array(params[-1]) # 保存 grad_Hs[i] 在本地，topk压缩的时候直接从本地拿
                 optimizer.step()
 
                 
 
         # Train server
         for le in range(args.local_epochs):
-            H = H_orig.copy()
+            H = H_orig.copy() # H_orig 属于 server，这步是本地拷贝，不需要统计
             # compute output
             outputs = server_model(torch.cat(H, axis=1))
             loss = criterion(outputs, targets)
@@ -330,6 +346,9 @@ def train(models, optimizers, epoch):  # , centers):
                 "\tServer Iter [%d/%d] " % (step + 1, train_size),
                 end=''
             )
+            print(f"c -> s {num_clients} 个 client 压缩后的 H_orig[i] 更新完毕，发送给 server, total {total_number1} float32 numbers ({round(total_number1*8/1024/1024, 4)} MBytes)")
+            print(f"s -> c 发送压缩后的 server model 给 {num_clients} 个 client, total {total_number2} float32 numbers ({round(total_number2*8/1024/1024, 4)} MBytes)")
+            print(f"s -> c Server 发送 其他 client 的 H_orig 给 client[1 ~ {num_clients}], total {total_number3} float32 numbers ({round(total_number3*8/1024/1024, 4)} MBytes)")
             # if dataset is msd, calculate RMSE
             if args.dataset == "msd":
                 print("RMSE: %.4f" % (np.sqrt(loss.item())))
