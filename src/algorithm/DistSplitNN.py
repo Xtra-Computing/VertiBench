@@ -27,7 +27,7 @@ MASTER_ADDR = os.environ['MASTER_ADDR']
 MASTER_PORT = os.environ['MASTER_PORT']
 
 
-def init_processes(rank, size, backend='nccl', args=None):
+def init_processes(rank, size, backend='gloo', args=None):
     """ Initialize the distributed environment. """
     dist.init_process_group(backend, rank=rank, world_size=size)
     run(backend, rank, size, args)
@@ -36,7 +36,7 @@ def init_processes(rank, size, backend='nccl', args=None):
 def run(backend, rank, size, args):
     """
     Run the distributed
-    :param backend: backend of the distributed environment. Should be in ['nccl', 'gloo']. nccl for GPU, gloo for CPU.
+    :param backend: backend of the distributed environment. Should be in ['gloo', 'gloo']. gloo for GPU, gloo for CPU.
     :param rank: rank of the current process.
     :param size: world size of the distributed environment. Should be equal to args.n_parties.
     :param args: arguments from parser.parse_args()
@@ -99,6 +99,7 @@ def run(backend, rank, size, args):
             optimizer.zero_grad()
 
             cut_output = model.local_mlps[rank](Xs[rank])
+            
             cut_gather = [torch.zeros_like(cut_output) for _ in range(args.n_parties)]
             if rank == args.primary_party:
                 dist.gather(cut_output, gather_list=cut_gather, group=group)
@@ -170,7 +171,7 @@ def run(backend, rank, size, args):
 if __name__ == '__main__':
     # arguments
     parser = argparse.ArgumentParser()
-    parser.add_argument('--gpu', '-g', type=int, default=0,
+    parser.add_argument('--gpu', '-g', type=int, default=None,
                         help="GPU ID. Set to None if you want to use CPU")
 
     # parameters for dataset
@@ -197,16 +198,17 @@ if __name__ == '__main__':
     parser.add_argument('--seed', '-s', type=int, default=0, help="random seed")
     args = parser.parse_args()
 
-    size = WORLD_SIZE
-    backend = 'nccl'
-    processes = []
-    for rank in range(size):
-        p = Process(target=init_processes, args=(rank, size, backend, args))
-        p.start()
-        processes.append(p)
+    # size = WORLD_SIZE
+    backend = 'gloo'
+    init_processes(WORLD_RANK, WORLD_SIZE, backend, args)
+    # processes = []
+    # for rank in range(size):
+    #     p = Process(target=init_processes, args=(rank, size, backend, args))
+    #     p.start()
+    #     processes.append(p)
 
-    for p in processes:
-        p.join()
+    # for p in processes:
+    #     p.join()
 
 
 """
@@ -218,4 +220,74 @@ On another party:   (change only the node_rank)
 torchrun --nproc_per_node=1 --nnodes=2 --node_rank=1 --master_addr=127.0.0.1 --master_port=12345 src/algorithm/DistSplitNN.py -d covtype -c 7 -m acc -p 2 -sp corr -b 0.0 -s 0 -g 0
 
 Note that only the parameters on the primary party will be used. The parameters on the other parties are ignored.
+"""
+
+
+"""
+
+PARTITION1=mi210_u250_u55c
+NODE1=hacc-gpu1
+PARTITION2=mi100
+NODE2=hacc-gpu5
+PARTITION3=mi210_vck_u55c
+NODE3=hacc-gpu3
+PARTITION4=mi100
+NODE4=hacc-gpu4
+TIME=9999
+CPUS=4
+
+CMD1="srun -p $PARTITION1 --time=$TIME --cpus-per-task=$CPUS -w $NODE1 --pty zsh -i"
+CMD2="srun -p $PARTITION2 --time=$TIME --cpus-per-task=$CPUS -w $NODE2 --pty zsh -i"
+CMD3="srun -p $PARTITION3 --time=$TIME --cpus-per-task=$CPUS -w $NODE3 --pty zsh -i"
+CMD4="srun -p $PARTITION4 --time=$TIME --cpus-per-task=$CPUS -w $NODE4 --pty zsh -i"
+
+tmux set -g pane-border-status top
+tmux set -g pane-border-format "#{session_name}:window#{window_index}.pane#{pane_index}.#{pane_title}"
+
+# Session
+SESSION_NAME="Distributed Test"
+tmux new-session -d -s $SESSION_NAME
+
+# Window
+WINDOW_NAME="ALL"
+tmux new-window -t $SESSION_NAME -n $WINDOW_NAME $CMD1
+tmux split-window -h -t $SESSION_NAME:$WINDOW_NAME.0 $CMD2
+tmux split-window -t $SESSION_NAME:$WINDOW_NAME.0 $CMD3
+tmux split-window -t $SESSION_NAME:$WINDOW_NAME.2 $CMD4
+sleep 5
+tmux select-pane -t $SESSION_NAME:$WINDOW_NAME.0 -T "gpu1"
+tmux select-pane -t $SESSION_NAME:$WINDOW_NAME.1 -T "gpu3"
+tmux select-pane -t $SESSION_NAME:$WINDOW_NAME.2 -T "gpu5"
+tmux select-pane -t $SESSION_NAME:$WINDOW_NAME.3 -T "gpu4"
+
+tmux send-keys -t $SESSION_NAME:$WINDOW_NAME.0 "conda activate gal && cd ~/VertiBenchGH" Enter
+tmux send-keys -t $SESSION_NAME:$WINDOW_NAME.1 "conda activate gal && cd ~/VertiBenchGH" Enter
+tmux send-keys -t $SESSION_NAME:$WINDOW_NAME.2 "conda activate gal && cd ~/VertiBenchGH" Enter
+tmux send-keys -t $SESSION_NAME:$WINDOW_NAME.3 "conda activate gal && cd ~/VertiBenchGH" Enter
+
+tmux send-keys -t $SESSION_NAME:$WINDOW_NAME.0 "conda activate gal && cd ~/VertiBenchGH" Enter
+tmux send-keys -t $SESSION_NAME:$WINDOW_NAME.1 "conda activate gal && cd ~/VertiBenchGH" Enter
+tmux send-keys -t $SESSION_NAME:$WINDOW_NAME.2 "conda activate gal && cd ~/VertiBenchGH" Enter
+tmux send-keys -t $SESSION_NAME:$WINDOW_NAME.3 "conda activate gal && cd ~/VertiBenchGH" Enter
+
+
+tmux send-keys -t $SESSION_NAME:$WINDOW_NAME.0 "clear" Enter
+tmux send-keys -t $SESSION_NAME:$WINDOW_NAME.1 "clear" Enter
+tmux send-keys -t $SESSION_NAME:$WINDOW_NAME.2 "clear" Enter
+tmux send-keys -t $SESSION_NAME:$WINDOW_NAME.3 "clear" Enter
+
+
+tmux send-keys -t $SESSION_NAME:$WINDOW_NAME.0 "GLOO_DEBUG=INFO TORCH_CPP_LOG_LEVEL=INFO TORCH_DISTRIBUTED_DEBUG=INFO GLOO_SOCKET_IFNAME=eno1 torchrun --nproc_per_node=1 --nnodes=4 --node_rank=0 --master_addr=192.168.47.111 --master_port=12347 src/algorithm/DistSplitNN.py -d covtype -c 7 -m acc -p 4 -sp imp -w 0.1 -s 0 -g 0" Enter
+tmux send-keys -t $SESSION_NAME:$WINDOW_NAME.1 "GLOO_DEBUG=INFO TORCH_CPP_LOG_LEVEL=INFO TORCH_DISTRIBUTED_DEBUG=INFO GLOO_SOCKET_IFNAME=eno1 torchrun --nproc_per_node=1 --nnodes=4 --node_rank=1 --master_addr=192.168.47.111 --master_port=12347 src/algorithm/DistSplitNN.py -d covtype -c 7 -m acc -p 4 -sp imp -w 0.1 -s 0 -g 0" Enter
+tmux send-keys -t $SESSION_NAME:$WINDOW_NAME.2 "GLOO_DEBUG=INFO TORCH_CPP_LOG_LEVEL=INFO TORCH_DISTRIBUTED_DEBUG=INFO GLOO_SOCKET_IFNAME=eno1 torchrun --nproc_per_node=1 --nnodes=4 --node_rank=2 --master_addr=192.168.47.111 --master_port=12347 src/algorithm/DistSplitNN.py -d covtype -c 7 -m acc -p 4 -sp imp -w 0.1 -s 0 -g 0" Enter
+tmux send-keys -t $SESSION_NAME:$WINDOW_NAME.3 "GLOO_DEBUG=INFO TORCH_CPP_LOG_LEVEL=INFO TORCH_DISTRIBUTED_DEBUG=INFO GLOO_SOCKET_IFNAME=eno1 torchrun --nproc_per_node=1 --nnodes=4 --node_rank=3 --master_addr=192.168.47.111 --master_port=12347 src/algorithm/DistSplitNN.py -d covtype -c 7 -m acc -p 4 -sp imp -w 0.1 -s 0 -g 0" Enter 
+
+
+# Window Monitor
+tmux send-keys -t $SESSION_NAME:$WINDOW_NAME.2 "watch -n 1 rocm-smi" Enter
+tmux send-keys -t $SESSION_NAME:$WINDOW_NAME.1 "dool" Enter
+
+tmux attach -t $SESSION_NAME
+
+
 """
