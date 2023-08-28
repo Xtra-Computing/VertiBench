@@ -2,12 +2,18 @@
 Train VFL on ModelNet-10 dataset
 """
 import os
+from os.path import dirname, abspath
+import sys
 import torch
 import torch.nn as nn
 import torch.backends.cudnn as cudnn
 from torch.utils.data import DataLoader
 from torch.autograd import Variable
 import torch.distributed as dist
+
+dir_path = dirname(abspath(__file__))
+sys.path.append(dir_path)
+sys.path.append(os.path.join(dir_path, "datasets", "vertibench"))
 
 import torchvision
 import torchvision.transforms as transforms
@@ -44,7 +50,7 @@ MASTER_PORT = os.environ['MASTER_PORT']
 
 DATASET_SPLIT = [0, 0, 0, 0] # added by
 
-def topk(tensor, compress_ratio, rank, size, group):
+def topk(tensor, compress_ratio, group):
     """
     Get topk elements in tensor
     """
@@ -58,16 +64,9 @@ def topk(tensor, compress_ratio, rank, size, group):
     )
     values = torch.gather(tensor, 0, indices)
 
-    ############## DISTRIBUTED: transfer values from server (0) to client ##############
-    if rank == 0:
-        dist.broadcast(values, 0, group=group)
-    else:
-        pass
-
-
-
-
-    ##############################################################################
+    ################## DISTRIBUTED: broadcast values to all clients ################
+    dist.broadcast(values, 0, group=group)
+    ###############################################################################
 
     numel = tensor.numel()
     tensor_decompressed = torch.zeros(
@@ -167,41 +166,47 @@ def quantize_scalar(x, quant_min=0, quant_max=1, quant_level=5):
 
 
 def save_eval(
-    models, train_loader, test_loader, losses, accs_train, accs_test, step, train_size
+    models, train_loader, test_loader, losses, accs_train, accs_test, step, train_size,
+    rank, size, group
 ):
     """
     Evaluate and save current loss and accuracy
     """
-    avg_train_acc, avg_loss = eval(models, train_loader)
-    avg_test_acc, _ = eval(models, test_loader)
-
-    losses.append(avg_loss)
-    accs_train.append(avg_train_acc)
-    accs_test.append(avg_test_acc)
-
-    # 禁止保存，加快速度
-    #pickle.dump(losses, open(f"./{args.folder}/loss{suffix}.pkl", "wb"))
-    #pickle.dump(accs_train, open(f"./{args.folder}/accs_train{suffix}.pkl", "wb"))
-    #pickle.dump(accs_test, open(f"./{args.folder}/accs_test{suffix}.pkl", "wb"))
-
-    print(datetime.datetime.now(pytz.timezone('Asia/Shanghai')).strftime("%Y-%m-%d %H:%M:%S"),
-        "Iter [%d/%d]: Avg Test Acc: %.2f - Avg Train Acc: %.2f - "
-        % (
-            step + 1,
-            train_size,
-            avg_test_acc.item(),
-            avg_train_acc.item(),
-        ),
-        end=''
-    )
-
-    if args.dataset == "msd":
-        print("Avg RMSE: %.4f" % (np.sqrt(avg_loss.item())))
+    if rank == 0:
+        avg_train_acc, avg_loss = eval(models, train_loader, rank, size, group)
+        avg_test_acc, _ = eval(models, test_loader, rank, size, group)
     else:
-        print("Avg Loss: %.4f" % (avg_loss.item()))
+        eval(models, train_loader, rank, size, group)
+        eval(models, test_loader, rank, size, group)
+
+    if rank == 0:
+        losses.append(avg_loss)
+        accs_train.append(avg_train_acc)
+        accs_test.append(avg_test_acc)
+
+        # 禁止保存，加快速度
+        #pickle.dump(losses, open(f"./{args.folder}/loss{suffix}.pkl", "wb"))
+        #pickle.dump(accs_train, open(f"./{args.folder}/accs_train{suffix}.pkl", "wb"))
+        #pickle.dump(accs_test, open(f"./{args.folder}/accs_test{suffix}.pkl", "wb"))
+
+        print(datetime.datetime.now(pytz.timezone('Asia/Shanghai')).strftime("%Y-%m-%d %H:%M:%S"),
+            "Iter [%d/%d]: Avg Test Acc: %.2f - Avg Train Acc: %.2f - "
+            % (
+                step + 1,
+                train_size,
+                avg_test_acc.item(),
+                avg_train_acc.item(),
+            ),
+            end=''
+        )
+
+        if args.dataset == "msd":
+            print("Avg RMSE: %.4f" % (np.sqrt(avg_loss.item())))
+        else:
+            print("Avg Loss: %.4f" % (avg_loss.item()))
 
 
-def train(models, optimizers, epoch, rank, size):  # , centers):
+def train(models, optimizers, epoch, rank, size, group):  # , centers):
     """
     Train all clients on all batches
     """
@@ -224,6 +229,7 @@ def train(models, optimizers, epoch, rank, size):  # , centers):
     total_c2s = 0
     total_s2c = 0
 
+    print("Start training")
     # step=0, inputs=(100,3,32,32), targets=(100)
     for step, (inputs, targets) in enumerate(train_loader):
         # Convert from list of 3D to 4D
@@ -235,66 +241,115 @@ def train(models, optimizers, epoch, rank, size):  # , centers):
 
         # 交换 embeddings，H_orig 是存放在 server 的 embeddings
         H_orig = [None] * num_clients # [None, None, None, None]
+        H_orig_sparse = [None] * num_clients # [None, None, None, None]
 
-        for i in range(num_clients): # 取出 H_orig[i], 压缩后放入 H_orig[i]
+        if rank != 0:
+            # local inference
+            i = rank - 1    # rank 0 is server, i is client index
+            # is a client (not server)
             x_local = inputs[
                 sum(DATASET_SPLIT[:i]) : sum(DATASET_SPLIT[: (i + 1)]), :
             ]
             x_local = torch.transpose(x_local, 0, 1) # 切分数据集
             with torch.no_grad(): # client[i] 跑出来结果放入 H_orig[i]
                 H_orig[i] = models[i](x_local) # float32, shape=(512,100)
+                assert H_orig[i] is not None
+        else:
+            i = 0  # only to obtain shape
+            # is a client (not server)
+            x_local = inputs[
+                      sum(DATASET_SPLIT[:i]): sum(DATASET_SPLIT[: (i + 1)]), :
+                      ]
+            x_local = torch.transpose(x_local, 0, 1)  # 切分数据集
+            with torch.no_grad():  # client[i] 跑出来结果放入 H_orig[i]
+                H_orig[i] = models[i](x_local)  # float32, shape=(512,100)
+                assert H_orig[i] is not None
 
             # Compress embedding(取出 H_orig[i], 压缩后放入 H_orig[i])
-            H_orig_need_to_transfer = [None] * num_clients # This variable was added by Junyi
-            if comp != "":
-                if comp == "topk" and not (epoch == 0 and step == 0):
-                    # Choose top k elements based on grads_Hs[i]
-                    # H_orig[i] = topk(H_orig[i], ratio)
+            H_orig_need_to_transfer = [None] * num_clients  # This variable was added by xxx
+
+        print(f"1: rank {rank}: {H_orig=}")
+        assert comp == "topk", f"Only support topk compression, got {comp}"
+        if comp != "":
+            if comp == "topk" and not (epoch == 0 and step == 0):
+                # Choose top k elements based on grads_Hs[i]
+                # H_orig[i] = topk(H_orig[i], ratio)
+                if rank != 0:
+                    i = rank - 1    # rank 0 is server, i is client index
                     H_tmp = H_orig[i].cpu().detach().numpy()
                     num = math.ceil(H_tmp.shape[1] * (1 - ratio)) # num 个 要被置为 0
                     grads = np.abs(grads_Hs[i])
                     idx = np.argpartition(grads, num)[:num]
                     indices = idx[np.argsort((grads)[idx])]
                     H_tmp[:, indices[:num]] = 0 # 后面传输的时候，只传输非0的
-
-                    ################## DISTRIBUTED: transfer H_orig_tensor_sent from clients to server ################
-                    H_orig_tensor_sent = H_tmp[:, indices[num:]]  # broadcast to server and all other parties
-
-
-                    H_tmp = np.zeros(H_orig[i].shape) # received from clients
-                    H_tmp[:, :H_orig_tensor_sent.shape[1]] = H_orig_tensor_sent
-                    ###################################################################################################
-
-                    H_orig_need_to_transfer[i] = H_tmp.shape[1] - num
-                    H_orig[i] = torch.from_numpy(H_tmp).float().cuda(device) # 更新本地的 H_orig[i]
-                elif comp == "topk":
-                    # If first iteration, do nothing
-                    pass
-                elif args.vecdim == 1:
-                    # Scalar quantization
-                    H_orig[i] = quantize_scalar(
-                        H_orig[i].cpu().detach().numpy(), quant_level=args.quant_level
-                    )
+                    H_orig_sparse[i] = H_tmp.to_sparse()
                 else:
-                    # Vector quantization
-                    H_orig[i] = quantize_vector(
-                        H_orig[i].cpu().detach().numpy(),
-                        quant_level=args.quant_level,
-                        dim=args.vecdim,
-                    )
+                    i = 0   # get shape only
+                    H_tmp = H_orig[i].cpu().detach().numpy().copy()
+                    num = math.ceil(H_tmp.shape[1] * (1 - ratio))  # num 个 要被置为 0
+                    grads = np.abs(grads_Hs[i])
+                    idx = np.argpartition(grads, num)[:num]
+                    indices = idx[np.argsort((grads)[idx])]
+                    H_tmp[:, indices[:num]] = 0  # 后面传输的时候，只传输非0的
+                    H_orig_sparse[i] = H_tmp.to_sparse()
 
-        total_number1 = np.sum([h.flatten().shape for h in H_orig])
-        total_c2s += total_number1
+                ################## DISTRIBUTED: transfer H_orig_sparse from clients to server ################
+                if rank == 0:
+                    H_orig_sparse_gather = [torch.zeros_like(H_orig_sparse[0])] * (num_clients + 1)
+                    dist.gather(torch.zeros(0), gather_list=H_orig_sparse_gather, group=group)
+                    H_orig_sparse_gather = H_orig_sparse_gather[1:]  # Remove the first server placeholder
+                    H_orig = [H_orig_sparse_gather[i].to_dense() for i in range(num_clients)]
+                    for i in range(num_clients):
+                        assert H_orig[i] is not None
+                    print(f"2: rank {rank}: {H_orig=}")
+                else:
+                    i = rank - 1    # rank 0 is server, i is client index
+                    dist.gather(H_orig_sparse[i], dst=0, group=group)
+                    H_orig_sparse_gather = [torch.zeros_like(H_orig_sparse[0])] * num_clients
+                ###################################################################################################
+
+                # if rank != 0:
+                #     i = rank - 1    # rank 0 is server, i is client index
+                #     H_orig_need_to_transfer[i] = H_tmp.shape[1] - num
+                #     H_orig[i] = torch.from_numpy(H_tmp).float().cuda(device) # 更新本地的 H_orig[i]
+            elif comp == "topk":
+                # If first iteration, do nothing
+
+                if rank == 0:
+                    gather_list = [torch.zeros_like(H_orig[0])] * (num_clients + 1)
+                    dist.gather(torch.zeros_like(H_orig[0]), gather_list=gather_list, group=group)
+                    H_orig = gather_list[1:]  # Remove the first server placeholder
+                else:
+                    i = rank - 1
+                    dist.gather(H_orig[i], dst=0, group=group)
+                print(f"3 rank {rank}: {H_orig=}")
+            elif args.vecdim == 1:
+                # Scalar quantization
+                H_orig[i] = quantize_scalar(
+                    H_orig[i].cpu().detach().numpy(), quant_level=args.quant_level
+                )
+            else:
+                # Vector quantization
+                H_orig[i] = quantize_vector(
+                    H_orig[i].cpu().detach().numpy(),
+                    quant_level=args.quant_level,
+                    dim=args.vecdim,
+                )
+        print(f"Finish {step}")
+
+        # total_number1 = np.sum([h.flatten().shape for h in H_orig])
+        # total_c2s += total_number1
+        print(f"4 rank {rank}: {H_orig=}")
 
         # 压缩 Server model （减少后续传输server model的communication开销，Train clients要用到 server model）
-        k_numbers_need_to_transfer = {} # This variable was added by Junyi
+        k_numbers_need_to_transfer = {} # This variable was added by xxx
         if comp != "":
             tmp_dict = server_model.state_dict()
             for key, value in tmp_dict.items():
                 vdim = value.dim()
                 shape = value.shape
                 if comp == "topk":
-                    tmp_dict[key], k_numbers_need_to_transfer[key] = topk(value, ratio)
+                    tmp_dict[key], k_numbers_need_to_transfer[key] = topk(value, ratio, group)
                 elif args.vecdim == 1:
                     if vdim == 1:
                         value = value.reshape(1, -1)
@@ -311,19 +366,29 @@ def train(models, optimizers, epoch, rank, size):  # , centers):
                     ).reshape(shape)
             server_model_comp.load_state_dict(tmp_dict)
         else:
+            assert False
             server_model_comp = server_model
 
-        # ========= 下面的 Train clients 通信统计 =========
-        # 理论情况需要传输的 float32 数量
-        total_number2 = np.sum([k_numbers_need_to_transfer[k] for k in k_numbers_need_to_transfer.keys()]) * num_clients
-        total_s2c += total_number2 # total float32 numbers from server to client
-
-        total_number3 = np.sum([h.flatten().shape for h in H_orig[1:]]) * num_clients # 不统计自己的 H_orig[i]，因为自己已经算过了。又因为 H_orig[i] 的shape都一样，所以随便扔掉一个就行
-        total_s2c += total_number3
-        # ========= 下面的 Train clients 通信统计 =========   
+        # # ========= 下面的 Train clients 通信统计 =========
+        # # 理论情况需要传输的 float32 数量
+        # total_number2 = np.sum([k_numbers_need_to_transfer[k] for k in k_numbers_need_to_transfer.keys()]) * num_clients
+        # total_s2c += total_number2 # total float32 numbers from server to client
+        #
+        # total_number3 = np.sum([h.flatten().shape for h in H_orig[1:]]) * num_clients # 不统计自己的 H_orig[i]，因为自己已经算过了。又因为 H_orig[i] 的shape都一样，所以随便扔掉一个就行
+        # total_s2c += total_number3
+        # # ========= 下面的 Train clients 通信统计 =========
+        print(f"5 rank {rank}: {H_orig=}")
+        # if rank == 0:
+        #     H_orig_sparse_gather = [H_orig[j].to_sparse() for j in range(num_clients)]
+        # for j in range(len(H_orig_sparse_gather)):
+        #     dist.broadcast(H_orig_sparse_gather[j], 0, group=group)
+        # H_orig = [H_orig_sparse_gather[j].to_dense() for j in range(num_clients)]
+        for j in range(len(H_orig)):
+            dist.broadcast(H_orig[j], 0, group=group)
 
         # Train clients
-        for i in range(num_clients):
+        if rank != 0:
+            i = rank - 1    # rank 0 is server, i is client index
             x_local = inputs[
                 sum(DATASET_SPLIT[:i]) : sum(DATASET_SPLIT[: (i + 1)]), :
             ] # 切分属于 client[i] 的数据集
@@ -352,39 +417,37 @@ def train(models, optimizers, epoch, rank, size):  # , centers):
                 params[-1] = params[-1].detach().cpu().numpy()
                 grads_Hs[i] = np.array(params[-1]) # 保存 grad_Hs[i] 在本地，topk压缩的时候直接从本地拿
                 optimizer.step()
+        else:
+            # Train server
+            for le in range(args.local_epochs):
+                H = H_orig.copy() # H_orig 属于 server，这步是本地拷贝，不需要统计
+                # compute output
+                outputs = server_model(torch.cat(H, axis=1))
+                loss = criterion(outputs, targets)
 
+                # compute gradient and do SGD step
+                server_optimizer.zero_grad()
+                loss.backward(retain_graph=True)
+                server_optimizer.step()
 
-
-        # Train server
-        for le in range(args.local_epochs):
-            H = H_orig.copy() # H_orig 属于 server，这步是本地拷贝，不需要统计
-            # compute output
-            outputs = server_model(torch.cat(H, axis=1))
-            loss = criterion(outputs, targets)
-
-            # compute gradient and do SGD step
-            server_optimizer.zero_grad()
-            loss.backward(retain_graph=True)
-            server_optimizer.step()
-
-        if (step + 1) % args.print_freq == 0:
-            print(datetime.datetime.now(pytz.timezone('Asia/Shanghai')).strftime("%Y-%m-%d %H:%M:%S"),
-                "\tServer Iter [%d/%d] " % (step + 1, train_size),
-                end=''
-            )
-            print(f"c -> s {num_clients} 个 client 压缩后的 H_orig[i] 更新完毕，发送给 server, total {total_number1} float32 numbers ({round(total_number1*8/1024/1024, 4)} MBytes)")
-            print(f"s -> c 发送压缩后的 server model 给 {num_clients} 个 client, total {total_number2} float32 numbers ({round(total_number2*8/1024/1024, 4)} MBytes)")
-            print(f"s -> c Server 发送 其他 client 的 H_orig 给 client[1 ~ {num_clients}], total {total_number3} float32 numbers ({round(total_number3*8/1024/1024, 4)} MBytes)")
-            # if dataset is msd, calculate RMSE
-            if args.dataset == "msd":
-                print("RMSE: %.4f" % (np.sqrt(loss.item())))
-            else:
-                print("Loss: %.4f" % (loss.item()))
+            if (step + 1) % args.print_freq == 0:
+                print(datetime.datetime.now(pytz.timezone('Asia/Shanghai')).strftime("%Y-%m-%d %H:%M:%S"),
+                    "\tServer Iter [%d/%d] " % (step + 1, train_size),
+                    end=''
+                )
+                # print(f"c -> s {num_clients} 个 client 压缩后的 H_orig[i] 更新完毕，发送给 server, total {total_number1} float32 numbers ({round(total_number1*8/1024/1024, 4)} MBytes)")
+                # print(f"s -> c 发送压缩后的 server model 给 {num_clients} 个 client, total {total_number2} float32 numbers ({round(total_number2*8/1024/1024, 4)} MBytes)")
+                # print(f"s -> c Server 发送 其他 client 的 H_orig 给 client[1 ~ {num_clients}], total {total_number3} float32 numbers ({round(total_number3*8/1024/1024, 4)} MBytes)")
+                # if dataset is msd, calculate RMSE
+                if args.dataset == "msd":
+                    print("RMSE: %.4f" % (np.sqrt(loss.item())))
+                else:
+                    print("Loss: %.4f" % (loss.item()))
 
 # Validation and Testing
-def eval(models, data_loader):
+def eval(models, data_loader, rank, size, group):
     """
-    Calculate loss and accuracy for a given data_loader
+    Calculate loss and accuracy for a given data_loader. only rank 0 has return value
     """
     total = 0.0
     correct = 0.0
@@ -392,7 +455,7 @@ def eval(models, data_loader):
     total_loss = 0.0
     n = 0
 
-    for i, (inputs, targets) in enumerate(data_loader):
+    for i, (inputs, targets) in tqdm(enumerate(data_loader)):
         with torch.no_grad():
             # Convert from list of 3D to 4D
             inputs = np.stack(inputs, axis=1)
@@ -404,31 +467,54 @@ def eval(models, data_loader):
             # print("eval inputs shape", inputs.shape)
             # Get current embeddings
             H_new = [None] * num_clients
-            for i in range(num_clients):
+
+            if rank != 0:
+                i = rank - 1    # rank 0 is server, i is client index
                 x_local = inputs[
                     sum(DATASET_SPLIT[:i]) : sum(DATASET_SPLIT[: (i + 1)]), :
                 ]
                 # print(f"eval x_local shape {x_local.shape}, DATASET_SPLIT={DATASET_SPLIT}")
                 x_local = torch.transpose(x_local, 0, 1) # 又给转回去了
                 H_new[i] = models[i](x_local)
-            # compute output
-            outputs = models[-1](torch.cat(H_new, axis=1))
-            loss = criterion(outputs, targets)
+                dist.gather(H_new[i], dst=0, group=group)
+            else:
+                i = 0
+                x_local = inputs[
+                          sum(DATASET_SPLIT[:i]): sum(DATASET_SPLIT[: (i + 1)]), :
+                          ]
+                # print(f"eval x_local shape {x_local.shape}, DATASET_SPLIT={DATASET_SPLIT}")
+                x_local = torch.transpose(x_local, 0, 1)  # 又给转回去了
+                H_new[i] = models[i](x_local)
 
-            total_loss += loss
-            n += 1
+            ################## DISTRIBUTED: gather H_new from clients to server ################
 
-            _, predicted = torch.max(outputs.data, 1)
-            total += targets.size(0)
-            correct += (predicted.cpu() == targets.cpu()).sum()
+            if rank == 0:
+                gather_list = [H_new[0]] * (num_clients + 1)
+                dist.gather(torch.zeros_like(H_new[0]), gather_list=gather_list, group=group)
+                H_new = gather_list[1:]  # Remove the first server placeholder
+            ###################################################################################################
 
-    avg_test_acc = 100 * correct / total
-    avg_loss = total_loss / n
+                # compute output
+                outputs = models[-1](torch.cat(H_new, axis=1))
+                loss = criterion(outputs, targets)
 
-    return avg_test_acc, avg_loss
+
+                total_loss += loss
+                n += 1
+
+                _, predicted = torch.max(outputs.data, 1)
+                total += targets.size(0)
+                correct += (predicted.cpu() == targets.cpu()).sum()
 
 
-def init_processes(rank, size, backend='nccl', args=None):
+    if rank == 0:
+        avg_test_acc = 100 * correct / total
+        avg_loss = total_loss / n
+
+        return avg_test_acc, avg_loss
+
+
+def init_processes(rank, size, backend='gloo', args=None):
     """ Initialize the distributed environment. """
     dist.init_process_group(backend, rank=rank, world_size=size)
     run(backend, rank, size, args)
@@ -436,6 +522,11 @@ def init_processes(rank, size, backend='nccl', args=None):
 
 def run(backend, rank, size, args):
     group = dist.new_group([i for i in range(size)])
+    global device
+    device = torch.device(f"cuda:{args.gpu + rank}" if torch.cuda.is_available() else "cpu")
+    for model in models:
+        model.to(device)
+    server_model_comp.to(device)
 
     losses = []
     accs_train = []
@@ -452,6 +543,9 @@ def run(backend, rank, size, args):
             accs_test,
             0,
             len(train_loader),
+            rank=rank,
+            size=size,
+            group=group
         )
     # Training / Eval loop
     train_size = len(train_loader)
@@ -462,7 +556,7 @@ def run(backend, rank, size, args):
               "Epoch: [%d/%d]" % (epoch + 1, n_epochs))
         start = time.time()
 
-        train(models, optimizers, epoch, rank, size)
+        train(models, optimizers, epoch, rank, size, group)
         print(datetime.datetime.now(pytz.timezone('Asia/Shanghai')).strftime("%Y-%m-%d %H:%M:%S"),
               "Time taken: %.2f sec." % (time.time() - start))
         save_eval(
@@ -503,6 +597,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="MVCNN-PyTorch")
     parser.add_argument("data", metavar="DIR", help="path to dataset")
     parser.add_argument(
+        '-p',
         "--num_clients",
         type=int,
         help="Number of clients to split data between vertically",
@@ -572,7 +667,6 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--print-freq",
-        "-p",
         default=100,
         type=int,
         metavar="N",
@@ -596,18 +690,18 @@ if __name__ == "__main__":
         default=1,
     )
     parser.add_argument(
-        "--quant_level", type=int, help="Number of quantization buckets", default=0
+        "--quant_level", type=int, help="Number of quantization buckets", default=4
     )
     parser.add_argument(
         "--vecdim", type=int, help="Vector quantization dimension", default=1
     )
-    parser.add_argument("--comp", type=str, help="Which compressor", default="")
-    parser.add_argument("--seed", type=int, help="Random seed to use", default=0)
+    parser.add_argument("--comp", type=str, help="Which compressor", default="topk")
+    parser.add_argument('-s', "--seed", type=int, help="Random seed to use", default=0)
 
-    parser.add_argument('--dataset', default="radar", type=str) # covtype, higgs,gisette, realsim, epsilon, letter, radar
-    parser.add_argument('--splitter', default="corr", type=str) # corr, imp
-    parser.add_argument('--weight', default="0.3", type=str)
-    parser.add_argument('--dataseed', default="0", type=str)
+    parser.add_argument('-d', '--dataset', default="radar", type=str) # covtype, higgs,gisette, realsim, epsilon, letter, radar
+    parser.add_argument('-sp', '--splitter', default="corr", type=str) # corr, imp
+    parser.add_argument('-w', '--weight', default="0.3", type=str)
+    parser.add_argument('-ds', '--dataseed', default="0", type=str)
 
     # get time
     curtime = datetime.datetime.now(pytz.timezone('Asia/Shanghai')).strftime("%Y-%m-%d %H-%M-%S")
@@ -621,8 +715,6 @@ if __name__ == "__main__":
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
     random.seed(args.seed)
-
-    device = torch.device(f"cuda:{args.gpu}" if torch.cuda.is_available() else "cpu")
 
     print(datetime.datetime.now(pytz.timezone('Asia/Shanghai')).strftime("%Y-%m-%d %H:%M:%S"), "Loading data")
 
@@ -736,13 +828,12 @@ if __name__ == "__main__":
             else:
                 model = VertiBench_Cls_bottom(n_features=dset_train.parties[i].X.shape[1])
 
-        model.to(device)
         cudnn.benchmark = True
         print(datetime.datetime.now(pytz.timezone('Asia/Shanghai')).strftime("%Y-%m-%d %H:%M:%S"), f"Client {i} mode",
               model)
         optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
         models.append(model)
-        optimizers.append(optimizer)  # modified by Junyi
+        optimizers.append(optimizer)  # modified by
 
     if args.dataset == "msd":
         server_model_comp = VertiBench_Cls_top(  # MSD is a regression dataset
@@ -757,7 +848,6 @@ if __name__ == "__main__":
             num_classes=len(classes), num_clients=num_clients
         )
 
-    server_model_comp.to(device)
     server_optimizer_comp = torch.optim.Adam(server_model_comp.parameters(), lr=args.lr)
 
     print(datetime.datetime.now(pytz.timezone('Asia/Shanghai')).strftime("%Y-%m-%d %H:%M:%S"), "Server model:",
@@ -769,3 +859,5 @@ if __name__ == "__main__":
     else:
         criterion = nn.CrossEntropyLoss()
     coords_per = 16
+
+    init_processes(WORLD_RANK, args.num_clients + 1, backend='gloo', args=args)

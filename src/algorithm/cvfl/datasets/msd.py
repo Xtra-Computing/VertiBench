@@ -23,7 +23,7 @@ class MSD(Dataset):
         self.key = list(torch.tensor(self.parties[0].key).clone().detach())
         self.y = torch.tensor(self.parties[0].y, dtype=torch.float32).unsqueeze(1).clone().detach()
         self.X = torch.cat([ torch.tensor(i.X).clone().detach() for i in self.parties], dim=1)
-        self.classes = torch.unique(self.y)
+        self.classes = 1
         print("🟢 MSD dataset loaded.")
         print("🟢 X.shape: ", self.X.shape)
         print("🟢 y.shape: ", self.y.shape)
