@@ -197,3 +197,7 @@ class VFLSynAlignedDataset(VFLAlignedDataset):
     @property
     def Xs(self):
         return [local_dataset.X for local_dataset in self.local_datasets]
+
+    @property
+    def y(self):
+        return self.local_datasets[self.primary_party_id].y

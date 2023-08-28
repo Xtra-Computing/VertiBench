@@ -302,7 +302,7 @@ class CorrelationSplitter:
         assert self.min_mcor is not None, "self.min_mcor is None. Please call fit() first."
         assert self.max_mcor is not None, "self.max_mcor is None. Please call fit() first."
 
-    def fit(self, X, n_elites=20, n_offsprings=70, n_mutants=10, n_gen=100, bias=0.7, verbose=False, **kwargs):
+    def fit(self, X, n_elites=200, n_offsprings=700, n_mutants=100, n_gen=100, bias=0.7, verbose=False, **kwargs):
         """
         Calculate the min and max mcor of the overall correlation score.
         Required parameters:
