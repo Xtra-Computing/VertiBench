@@ -54,10 +54,11 @@ if __name__ == "__main__":
     os.system(f'mkdir -p {folder}')
 
     # for dataset in [ 'gisette', 'realsim', 'msd', 'covtype', 'epsilon', 'letter', 'radar' ]:
-    for dataset in [ 'msd' ]:
+    for dataset in [ 'covtype' ]:
         for num_clients in [4]:
             for seed in [0]:
                 commands = get_commands(folder, dataset, seed, '0.0001', num_clients, 10, 200, 512, "imp", '0.1')
+                print(commands)
                 for cmd in commands:
                     print(cmd)
                     pool.apply_async(process_wrapper, (gpuid_queue, cmd, seed))

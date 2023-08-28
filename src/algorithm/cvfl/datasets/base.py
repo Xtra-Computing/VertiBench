@@ -18,7 +18,7 @@ def get_dataset(dataset_name: str, party_id:int, typ:str, value:str, train: str,
     else:
         fname = f"{dataset_name}_party{num_clients}-{party_id}_{typ}_{value}_seed{dataseed}_test.pkl"
 
-    msd = pickle.load(open(f"/data/zhaomin/VertiBench/data/syn/{dataset_name}/{fname}", "rb"))
+    msd = pickle.load(open(f"data/syn/{dataset_name}/{fname}", "rb"))
     return msd
 
 # 获取zhaomin的数据集
@@ -38,5 +38,5 @@ def get_dataset_real(dataset_name: str, party_id:int, train: str):
     else:
         fname = f"{dataset_name}_party{num_clients}-{party_id}_test.pkl"
 
-    msd = pickle.load(open(f"/data/zhaomin/VertiBench/data/real/{dataset_name}/processed/{fname}", "rb"))
+    msd = pickle.load(open(f"data/real/{dataset_name}/processed/{fname}", "rb"))
     return msd

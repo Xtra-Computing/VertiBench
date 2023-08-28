@@ -1,12 +1,13 @@
 """
 Train VFL on ModelNet-10 dataset
 """
-
+import os
 import torch
 import torch.nn as nn
 import torch.backends.cudnn as cudnn
 from torch.utils.data import DataLoader
 from torch.autograd import Variable
+import torch.distributed as dist
 
 import torchvision
 import torchvision.transforms as transforms
@@ -35,10 +36,15 @@ import warnings
 warnings.simplefilter('ignore', category=NumbaDeprecationWarning)
 warnings.simplefilter('ignore', category=NumbaPendingDeprecationWarning)
 
+LOCAL_RANK = int(os.environ['LOCAL_RANK'])
+WORLD_SIZE = int(os.environ['WORLD_SIZE'])
+WORLD_RANK = int(os.environ['RANK'])
+MASTER_ADDR = os.environ['MASTER_ADDR']
+MASTER_PORT = os.environ['MASTER_PORT']
 
 DATASET_SPLIT = [0, 0, 0, 0] # added by
 
-def topk(tensor, compress_ratio):
+def topk(tensor, compress_ratio, rank, size, group):
     """
     Get topk elements in tensor
     """
@@ -50,8 +56,18 @@ def topk(tensor, compress_ratio):
         k,
         sorted=False,
     )
-
     values = torch.gather(tensor, 0, indices)
+
+    ############## DISTRIBUTED: transfer values from server (0) to client ##############
+    if rank == 0:
+        dist.broadcast(values, 0, group=group)
+    else:
+        pass
+
+
+
+
+    ##############################################################################
 
     numel = tensor.numel()
     tensor_decompressed = torch.zeros(
@@ -168,7 +184,7 @@ def save_eval(
     #pickle.dump(accs_train, open(f"./{args.folder}/accs_train{suffix}.pkl", "wb"))
     #pickle.dump(accs_test, open(f"./{args.folder}/accs_test{suffix}.pkl", "wb"))
 
-    print(datetime.datetime.now(pytz.timezone('Asia/Shanghai')).strftime("%Y-%m-%d %H:%M:%S"), 
+    print(datetime.datetime.now(pytz.timezone('Asia/Shanghai')).strftime("%Y-%m-%d %H:%M:%S"),
         "Iter [%d/%d]: Avg Test Acc: %.2f - Avg Train Acc: %.2f - "
         % (
             step + 1,
@@ -185,7 +201,7 @@ def save_eval(
         print("Avg Loss: %.4f" % (avg_loss.item()))
 
 
-def train(models, optimizers, epoch):  # , centers):
+def train(models, optimizers, epoch, rank, size):  # , centers):
     """
     Train all clients on all batches
     """
@@ -216,10 +232,10 @@ def train(models, optimizers, epoch):  # , centers):
 
         inputs, targets = inputs.cuda(device), targets.cuda(device)
         inputs, targets = Variable(inputs), Variable(targets)
-        
+
         # 交换 embeddings，H_orig 是存放在 server 的 embeddings
         H_orig = [None] * num_clients # [None, None, None, None]
-        
+
         for i in range(num_clients): # 取出 H_orig[i], 压缩后放入 H_orig[i]
             x_local = inputs[
                 sum(DATASET_SPLIT[:i]) : sum(DATASET_SPLIT[: (i + 1)]), :
@@ -240,6 +256,15 @@ def train(models, optimizers, epoch):  # , centers):
                     idx = np.argpartition(grads, num)[:num]
                     indices = idx[np.argsort((grads)[idx])]
                     H_tmp[:, indices[:num]] = 0 # 后面传输的时候，只传输非0的
+
+                    ################## DISTRIBUTED: transfer H_orig_tensor_sent from clients to server ################
+                    H_orig_tensor_sent = H_tmp[:, indices[num:]]  # broadcast to server and all other parties
+
+
+                    H_tmp = np.zeros(H_orig[i].shape) # received from clients
+                    H_tmp[:, :H_orig_tensor_sent.shape[1]] = H_orig_tensor_sent
+                    ###################################################################################################
+
                     H_orig_need_to_transfer[i] = H_tmp.shape[1] - num
                     H_orig[i] = torch.from_numpy(H_tmp).float().cuda(device) # 更新本地的 H_orig[i]
                 elif comp == "topk":
@@ -257,10 +282,10 @@ def train(models, optimizers, epoch):  # , centers):
                         quant_level=args.quant_level,
                         dim=args.vecdim,
                     )
-        
+
         total_number1 = np.sum([h.flatten().shape for h in H_orig])
         total_c2s += total_number1
-        
+
         # 压缩 Server model （减少后续传输server model的communication开销，Train clients要用到 server model）
         k_numbers_need_to_transfer = {} # This variable was added by Junyi
         if comp != "":
@@ -292,7 +317,7 @@ def train(models, optimizers, epoch):  # , centers):
         # 理论情况需要传输的 float32 数量
         total_number2 = np.sum([k_numbers_need_to_transfer[k] for k in k_numbers_need_to_transfer.keys()]) * num_clients
         total_s2c += total_number2 # total float32 numbers from server to client
-        
+
         total_number3 = np.sum([h.flatten().shape for h in H_orig[1:]]) * num_clients # 不统计自己的 H_orig[i]，因为自己已经算过了。又因为 H_orig[i] 的shape都一样，所以随便扔掉一个就行
         total_s2c += total_number3
         # ========= 下面的 Train clients 通信统计 =========   
@@ -328,7 +353,7 @@ def train(models, optimizers, epoch):  # , centers):
                 grads_Hs[i] = np.array(params[-1]) # 保存 grad_Hs[i] 在本地，topk压缩的时候直接从本地拿
                 optimizer.step()
 
-                
+
 
         # Train server
         for le in range(args.local_epochs):
@@ -343,7 +368,7 @@ def train(models, optimizers, epoch):  # , centers):
             server_optimizer.step()
 
         if (step + 1) % args.print_freq == 0:
-            print(datetime.datetime.now(pytz.timezone('Asia/Shanghai')).strftime("%Y-%m-%d %H:%M:%S"), 
+            print(datetime.datetime.now(pytz.timezone('Asia/Shanghai')).strftime("%Y-%m-%d %H:%M:%S"),
                 "\tServer Iter [%d/%d] " % (step + 1, train_size),
                 end=''
             )
@@ -403,6 +428,68 @@ def eval(models, data_loader):
     return avg_test_acc, avg_loss
 
 
+def init_processes(rank, size, backend='nccl', args=None):
+    """ Initialize the distributed environment. """
+    dist.init_process_group(backend, rank=rank, world_size=size)
+    run(backend, rank, size, args)
+
+
+def run(backend, rank, size, args):
+    group = dist.new_group([i for i in range(size)])
+
+    losses = []
+    accs_train = []
+    accs_test = []
+
+    # Get initial loss/accuracy
+    if start_epoch == 0:
+        save_eval(
+            models,
+            train_loader,
+            test_loader,
+            losses,
+            accs_train,
+            accs_test,
+            0,
+            len(train_loader),
+        )
+    # Training / Eval loop
+    train_size = len(train_loader)
+    for epoch in range(start_epoch, n_epochs):
+        print(datetime.datetime.now(pytz.timezone('Asia/Shanghai')).strftime("%Y-%m-%d %H:%M:%S"),
+              "\n-----------------------------------")
+        print(datetime.datetime.now(pytz.timezone('Asia/Shanghai')).strftime("%Y-%m-%d %H:%M:%S"),
+              "Epoch: [%d/%d]" % (epoch + 1, n_epochs))
+        start = time.time()
+
+        train(models, optimizers, epoch, rank, size)
+        print(datetime.datetime.now(pytz.timezone('Asia/Shanghai')).strftime("%Y-%m-%d %H:%M:%S"),
+              "Time taken: %.2f sec." % (time.time() - start))
+        save_eval(
+            models,
+            train_loader,
+            test_loader,
+            losses,
+            accs_train,
+            accs_test,
+            epoch,
+            train_size,
+        )
+
+        # for i in range(num_clients + 1):
+        #     PATH = f"./{args.folder}/checkpoint{i}{suffix}.pt"
+        #     # 禁止保存，加快速度
+        #     torch.save(
+        #         {
+        #             "epoch": epoch + 1,
+        #             "model_state_dict": models[i].state_dict(),
+        #             "optimizer_state_dict": optimizers[i].state_dict(),
+        #             "loss": 0,
+        #         },
+        #         PATH,
+        #     )
+        print(datetime.datetime.now(pytz.timezone('Asia/Shanghai')).strftime("%Y-%m-%d %H:%M:%S"),
+              "Time taken: %.2f sec." % (time.time() - start))
 
 
 if __name__ == "__main__":
@@ -411,7 +498,7 @@ if __name__ == "__main__":
     # MODELS = [RESNET, MVCNN]
 
     # Set up input arguments
-    
+
 
     parser = argparse.ArgumentParser(description="MVCNN-PyTorch")
     parser.add_argument("data", metavar="DIR", help="path to dataset")
@@ -516,7 +603,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("--comp", type=str, help="Which compressor", default="")
     parser.add_argument("--seed", type=int, help="Random seed to use", default=0)
-    
+
     parser.add_argument('--dataset', default="radar", type=str) # covtype, higgs,gisette, realsim, epsilon, letter, radar
     parser.add_argument('--splitter', default="corr", type=str) # corr, imp
     parser.add_argument('--weight', default="0.3", type=str)
@@ -538,18 +625,6 @@ if __name__ == "__main__":
     device = torch.device(f"cuda:{args.gpu}" if torch.cuda.is_available() else "cpu")
 
     print(datetime.datetime.now(pytz.timezone('Asia/Shanghai')).strftime("%Y-%m-%d %H:%M:%S"), "Loading data")
-
-    transform = transforms.Compose(
-        [
-            transforms.RandomCrop(32, padding=4),
-            transforms.RandomHorizontalFlip(),
-            transforms.ToTensor(),
-            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
-        ]
-    )
-
-    dset_train = None
-    dset_val = None
 
     # covtype, higgs,gisette, realsim, epsilon, letter, radar, cifar10, mnist
     if args.dataset == "covtype":
@@ -602,11 +677,11 @@ if __name__ == "__main__":
         dset_val = Vehicle("test")
     else:
         assert False, "Unsupported dataset"
-    
+
     DATASET_SPLIT = dset_train.partitions
-    
+
     # Load dataset
-    
+
     train_loader = DataLoader(
         dset_train, batch_size=args.batch_size, shuffle=False, num_workers=1
     )
@@ -616,11 +691,9 @@ if __name__ == "__main__":
     )
 
     classes = dset_train.classes
-    print(datetime.datetime.now(pytz.timezone('Asia/Shanghai')).strftime("%Y-%m-%d %H:%M:%S"), "Classes:", len(classes), classes)
+    print(datetime.datetime.now(pytz.timezone('Asia/Shanghai')).strftime("%Y-%m-%d %H:%M:%S"), "Classes:", len(classes),
+          classes)
     print(datetime.datetime.now(pytz.timezone('Asia/Shanghai')).strftime("%Y-%m-%d %H:%M:%S"), args)
-    losses = []
-    accs_train = []
-    accs_test = []
 
     best_acc = 0.0
     best_loss = 0.0
@@ -635,7 +708,7 @@ if __name__ == "__main__":
                 model = VertiBench_Cls_top(
                     num_classes=1,
                     num_clients=num_clients,
-                    activation = nn.Sigmoid()
+                    activation=nn.Sigmoid()
                 )
             elif args.dataset in ["cifar10", "mnist"]:
                 model = resnet_top(
@@ -647,7 +720,7 @@ if __name__ == "__main__":
                 model = VertiBench_Cls_top(
                     num_classes=len(classes),
                     num_clients=num_clients,
-                    activation = None
+                    activation=None
                 )
         else:
             if args.dataset == "cifar10":
@@ -665,27 +738,30 @@ if __name__ == "__main__":
 
         model.to(device)
         cudnn.benchmark = True
-        print(datetime.datetime.now(pytz.timezone('Asia/Shanghai')).strftime("%Y-%m-%d %H:%M:%S"),f"Client {i} mode", model)
+        print(datetime.datetime.now(pytz.timezone('Asia/Shanghai')).strftime("%Y-%m-%d %H:%M:%S"), f"Client {i} mode",
+              model)
         optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
         models.append(model)
-        optimizers.append(optimizer) # modified by Junyi
+        optimizers.append(optimizer)  # modified by Junyi
 
     if args.dataset == "msd":
-        server_model_comp = VertiBench_Cls_top( # MSD is a regression dataset
+        server_model_comp = VertiBench_Cls_top(  # MSD is a regression dataset
             num_classes=1, num_clients=num_clients
         )
     elif args.dataset in ["cifar10", "mnist"]:
-        server_model_comp = resnet_top( # pretrained: False, num_classes: 10, num_clients: 4
+        server_model_comp = resnet_top(  # pretrained: False, num_classes: 10, num_clients: 4
             pretrained=args.pretrained, num_classes=len(classes), num_clients=num_clients
         )
     else:
-        server_model_comp = VertiBench_Cls_top( # pretrained: False, num_classes: 10, num_clients: 4
+        server_model_comp = VertiBench_Cls_top(  # pretrained: False, num_classes: 10, num_clients: 4
             num_classes=len(classes), num_clients=num_clients
         )
 
     server_model_comp.to(device)
     server_optimizer_comp = torch.optim.Adam(server_model_comp.parameters(), lr=args.lr)
-    print(datetime.datetime.now(pytz.timezone('Asia/Shanghai')).strftime("%Y-%m-%d %H:%M:%S"), "Server model:", server_model_comp)
+
+    print(datetime.datetime.now(pytz.timezone('Asia/Shanghai')).strftime("%Y-%m-%d %H:%M:%S"), "Server model:",
+          server_model_comp)
     # Loss and Optimizer
     n_epochs = args.epochs
     if args.dataset == "msd":
@@ -693,49 +769,3 @@ if __name__ == "__main__":
     else:
         criterion = nn.CrossEntropyLoss()
     coords_per = 16
-
-    # Get initial loss/accuracy
-    if start_epoch == 0:
-        save_eval(
-            models,
-            train_loader,
-            test_loader,
-            losses,
-            accs_train,
-            accs_test,
-            0,
-            len(train_loader),
-        )
-    # Training / Eval loop
-    train_size = len(train_loader)
-    for epoch in range(start_epoch, n_epochs):
-        print(datetime.datetime.now(pytz.timezone('Asia/Shanghai')).strftime("%Y-%m-%d %H:%M:%S"), "\n-----------------------------------")
-        print(datetime.datetime.now(pytz.timezone('Asia/Shanghai')).strftime("%Y-%m-%d %H:%M:%S"), "Epoch: [%d/%d]" % (epoch + 1, n_epochs))
-        start = time.time()
-
-        train(models, optimizers, epoch)
-        print(datetime.datetime.now(pytz.timezone('Asia/Shanghai')).strftime("%Y-%m-%d %H:%M:%S"), "Time taken: %.2f sec." % (time.time() - start))
-        save_eval(
-            models,
-            train_loader,
-            test_loader,
-            losses,
-            accs_train,
-            accs_test,
-            epoch,
-            train_size,
-        )
-
-        for i in range(num_clients + 1):
-            PATH = f"./{args.folder}/checkpoint{i}{suffix}.pt"
-            # 禁止保存，加快速度
-            # torch.save(
-            #     {
-            #         "epoch": epoch + 1,
-            #         "model_state_dict": models[i].state_dict(),
-            #         "optimizer_state_dict": optimizers[i].state_dict(),
-            #         "loss": 0,
-            #     },
-            #     PATH,
-            # )
-        print(datetime.datetime.now(pytz.timezone('Asia/Shanghai')).strftime("%Y-%m-%d %H:%M:%S"), "Time taken: %.2f sec." % (time.time() - start))
