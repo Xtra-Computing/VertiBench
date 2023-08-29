@@ -3,7 +3,7 @@ import sys
 import warnings
 from datetime import datetime
 import argparse
-
+import numpy as np
 import torch
 import torch.distributed as dist
 import torch.nn as nn
@@ -107,8 +107,11 @@ def run(backend, rank, size, args):
                 dist.gather(cut_output, dst=args.primary_party, group=group)
             cut_concat = torch.cat(cut_gather, dim=1)
             if rank == args.primary_party:
-                y_pred = model.agg_mlp(cut_concat)
-
+                if out_activation is not None:
+                    y_pred = out_activation(model.agg_mlp(cut_concat))
+                else:
+                    y_pred = model.agg_mlp(cut_concat)
+                    
                 y_pred = y_pred.flatten() if task in ['reg', 'bin-cls'] else y_pred
                 loss = loss_fn(y_pred, y)
                 total_loss += loss.item()
@@ -119,6 +122,7 @@ def run(backend, rank, size, args):
                     y_pred = torch.argmax(y_pred, dim=1).reshape(-1, 1)
 
                 y_pred = y_pred.reshape(-1, 1)
+                # print("🔵 y_pred2", y_pred.shape, torch.unique(y_pred))
                 train_pred_y = torch.cat([train_pred_y, y_pred], dim=0)
                 train_y = torch.cat([train_y, y.reshape(-1, 1)], dim=0)
                 loss.backward(retain_graph=True)
@@ -151,7 +155,10 @@ def run(backend, rank, size, args):
                         dist.gather(cut_output, dst=args.primary_party, group=group)
                     cut_concat = torch.cat(cut_gather, dim=1)
                     if rank == args.primary_party:
-                        y_pred = model.agg_mlp(cut_concat)
+                        if out_activation is not None:
+                            y_pred = out_activation(model.agg_mlp(cut_concat))
+                        else:
+                            y_pred = model.agg_mlp(cut_concat)
                         y_pred = y_pred.flatten() if task in ['reg', 'bin-cls'] else y_pred
                         test_loss += loss_fn(y_pred, y)
 
@@ -241,8 +248,6 @@ CMD2="srun -p $PARTITION2 --time=$TIME --cpus-per-task=$CPUS -w $NODE2 --pty zsh
 CMD3="srun -p $PARTITION3 --time=$TIME --cpus-per-task=$CPUS -w $NODE3 --pty zsh -i"
 CMD4="srun -p $PARTITION4 --time=$TIME --cpus-per-task=$CPUS -w $NODE4 --pty zsh -i"
 
-tmux set -g pane-border-status top
-tmux set -g pane-border-format "#{session_name}:window#{window_index}.pane#{pane_index}.#{pane_title}"
 
 # Session
 SESSION_NAME="Distributed Test"
@@ -260,24 +265,21 @@ tmux select-pane -t $SESSION_NAME:$WINDOW_NAME.1 -T "gpu3"
 tmux select-pane -t $SESSION_NAME:$WINDOW_NAME.2 -T "gpu5"
 tmux select-pane -t $SESSION_NAME:$WINDOW_NAME.3 -T "gpu4"
 
+tmux set -g pane-border-status top
+tmux set -g pane-border-format "#{session_name}:window#{window_index}.pane#{pane_index}.#{pane_title}"
+
+
 tmux send-keys -t $SESSION_NAME:$WINDOW_NAME.0 "conda activate gal && cd ~/VertiBenchGH" Enter
 tmux send-keys -t $SESSION_NAME:$WINDOW_NAME.1 "conda activate gal && cd ~/VertiBenchGH" Enter
 tmux send-keys -t $SESSION_NAME:$WINDOW_NAME.2 "conda activate gal && cd ~/VertiBenchGH" Enter
 tmux send-keys -t $SESSION_NAME:$WINDOW_NAME.3 "conda activate gal && cd ~/VertiBenchGH" Enter
-
-tmux send-keys -t $SESSION_NAME:$WINDOW_NAME.0 "conda activate gal && cd ~/VertiBenchGH" Enter
-tmux send-keys -t $SESSION_NAME:$WINDOW_NAME.1 "conda activate gal && cd ~/VertiBenchGH" Enter
-tmux send-keys -t $SESSION_NAME:$WINDOW_NAME.2 "conda activate gal && cd ~/VertiBenchGH" Enter
-tmux send-keys -t $SESSION_NAME:$WINDOW_NAME.3 "conda activate gal && cd ~/VertiBenchGH" Enter
-
-
 tmux send-keys -t $SESSION_NAME:$WINDOW_NAME.0 "clear" Enter
 tmux send-keys -t $SESSION_NAME:$WINDOW_NAME.1 "clear" Enter
 tmux send-keys -t $SESSION_NAME:$WINDOW_NAME.2 "clear" Enter
 tmux send-keys -t $SESSION_NAME:$WINDOW_NAME.3 "clear" Enter
 
 
-tmux send-keys -t $SESSION_NAME:$WINDOW_NAME.0 "GLOO_DEBUG=INFO TORCH_CPP_LOG_LEVEL=INFO TORCH_DISTRIBUTED_DEBUG=INFO GLOO_SOCKET_IFNAME=eno1 torchrun --nproc_per_node=1 --nnodes=4 --node_rank=0 --master_addr=192.168.47.111 --master_port=12347 src/algorithm/DistSplitNN.py -d covtype -c 7 -m acc -p 4 -sp imp -w 0.1 -s 0 -g 0" Enter
+# tmux send-keys -t $SESSION_NAME:$WINDOW_NAME.0 "GLOO_DEBUG=INFO TORCH_CPP_LOG_LEVEL=INFO TORCH_DISTRIBUTED_DEBUG=INFO GLOO_SOCKET_IFNAME=eno1 torchrun --nproc_per_node=1 --nnodes=4 --node_rank=0 --master_addr=192.168.47.111 --master_port=12347 src/algorithm/DistSplitNN.py -d covtype -c 7 -m acc -p 4 -sp imp -w 0.1 -s 0 -g 0" Enter
 tmux send-keys -t $SESSION_NAME:$WINDOW_NAME.1 "GLOO_DEBUG=INFO TORCH_CPP_LOG_LEVEL=INFO TORCH_DISTRIBUTED_DEBUG=INFO GLOO_SOCKET_IFNAME=eno1 torchrun --nproc_per_node=1 --nnodes=4 --node_rank=1 --master_addr=192.168.47.111 --master_port=12347 src/algorithm/DistSplitNN.py -d covtype -c 7 -m acc -p 4 -sp imp -w 0.1 -s 0 -g 0" Enter
 tmux send-keys -t $SESSION_NAME:$WINDOW_NAME.2 "GLOO_DEBUG=INFO TORCH_CPP_LOG_LEVEL=INFO TORCH_DISTRIBUTED_DEBUG=INFO GLOO_SOCKET_IFNAME=eno1 torchrun --nproc_per_node=1 --nnodes=4 --node_rank=2 --master_addr=192.168.47.111 --master_port=12347 src/algorithm/DistSplitNN.py -d covtype -c 7 -m acc -p 4 -sp imp -w 0.1 -s 0 -g 0" Enter
 tmux send-keys -t $SESSION_NAME:$WINDOW_NAME.3 "GLOO_DEBUG=INFO TORCH_CPP_LOG_LEVEL=INFO TORCH_DISTRIBUTED_DEBUG=INFO GLOO_SOCKET_IFNAME=eno1 torchrun --nproc_per_node=1 --nnodes=4 --node_rank=3 --master_addr=192.168.47.111 --master_port=12347 src/algorithm/DistSplitNN.py -d covtype -c 7 -m acc -p 4 -sp imp -w 0.1 -s 0 -g 0" Enter 
