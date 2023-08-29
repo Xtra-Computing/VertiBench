@@ -50,6 +50,27 @@ MASTER_PORT = os.environ['MASTER_PORT']
 
 DATASET_SPLIT = [0, 0, 0, 0] # added by
 
+
+def to_sparse_coo(T):
+    """
+    Convert a PyTorch tensor to a sparse PyTorch tensor in COO format
+    """
+    indices = T.nonzero(as_tuple=False)
+    print(f"to_sparse_coo: {T.shape=}, {indices.shape}, {indices=}")
+    values = T[indices[:, 0], indices[:, 1]]
+    return indices, values, torch.tensor(T.shape)
+
+def to_dense_coo(indices, values, shape, device=None):
+    """
+    Convert a sparse PyTorch tensor in COO format to a PyTorch tensor
+    """
+    T = torch.zeros(tuple(shape))
+    print(f"to_dense_coo: {T.shape=}, {indices.shape}, {indices=}")
+    if device is not None:
+        T = T.to(device)
+    T[indices[:, 0], indices[:, 1]] = values
+    return T
+
 def topk(tensor, compress_ratio, group):
     """
     Get topk elements in tensor
@@ -65,6 +86,7 @@ def topk(tensor, compress_ratio, group):
     values = torch.gather(tensor, 0, indices)
 
     ################## DISTRIBUTED: broadcast values to all clients ################
+    dist.broadcast(indices, 0, group=group)
     dist.broadcast(values, 0, group=group)
     ###############################################################################
 
@@ -255,7 +277,7 @@ def train(models, optimizers, epoch, rank, size, group):  # , centers):
                 H_orig[i] = models[i](x_local) # float32, shape=(512,100)
                 assert H_orig[i] is not None
             for j in range(len(H_orig)):
-               H_orig[j] = torch.zeros_like(H_orig[i])  # set placeholder for other clients
+                H_orig[j] = torch.zeros_like(H_orig[i])  # set placeholder for other clients
         else:
             i = 0  # only to obtain shape
             # is a client (not server)
@@ -284,7 +306,7 @@ def train(models, optimizers, epoch, rank, size, group):  # , centers):
                     idx = np.argpartition(grads, num)[:num]
                     indices = idx[np.argsort((grads)[idx])]
                     H_tmp[:, indices[:num]] = 0 # 后面传输的时候，只传输非0的
-                    # H_orig_sparse[i] = H_tmp.to_sparse()
+                    H_orig_sparse[i] = torch.tensor(H_tmp).to_sparse().to(device)
                 else:
                     i = 0   # get shape only
                     H_tmp = H_orig[i].cpu().detach().numpy().copy()
@@ -293,26 +315,47 @@ def train(models, optimizers, epoch, rank, size, group):  # , centers):
                     idx = np.argpartition(grads, num)[:num]
                     indices = idx[np.argsort((grads)[idx])]
                     H_tmp[:, indices[:num]] = 0  # 后面传输的时候，只传输非0的
-                    # H_orig_sparse[i] = H_tmp.to_sparse()
+                    H_orig_sparse[i] = torch.tensor(H_tmp).to_sparse().to(device)
 
                 ################## DISTRIBUTED: transfer H_orig_sparse from clients to server ################
                 if rank == 0:
-                    # H_orig_sparse_gather = [torch.zeros_like(H_orig_sparse[0])] * (num_clients + 1)
-                    # dist.gather(torch.zeros(0), gather_list=H_orig_sparse_gather, group=group)
-                    # H_orig_sparse_gather = H_orig_sparse_gather[1:]  # Remove the first server placeholder
-                    # H_orig = [H_orig_sparse_gather[i].to_dense() for i in range(num_clients)]
+                    H_orig_sparse_gather = [torch.zeros_like(H_orig_sparse[0])] * (num_clients + 1)
+                    dist.gather_object(torch.zeros(0), H_orig_sparse_gather, group=group)
+                    H_orig_sparse_gather = H_orig_sparse_gather[1:]  # Remove the first server placeholder
+                    H_orig = [H_orig_sparse_gather[i].to_dense().to(device) for i in range(num_clients)]
 
-                    H_orig_gather = [torch.zeros_like(H_orig[0])] * (num_clients + 1)
-                    dist.gather(torch.zeros_like(H_orig[0]), gather_list=H_orig_gather, group=group)
-                    H_orig = H_orig_gather[1:]  # Remove the first server placeholder
-                    for i in range(num_clients):
-                        assert H_orig[i] is not None
-                    # print(f"2: rank {rank}: {H_orig=}")
+                    # # dense
+                    # H_orig_gather = [torch.zeros_like(H_orig[0])] * (num_clients + 1)
+                    # dist.gather(torch.zeros_like(H_orig[0]), gather_list=H_orig_gather, group=group)
+                    # H_orig = H_orig_gather[1:]  # Remove the first server placeholder
+
+                    # # sparse
+                    # H_orig0_indices, H_orig0_values, H_orig0_shape = to_sparse_coo(H_orig[0])
+                    # H_orig_indices_gather = [torch.zeros(0, dtype=torch.int64)] * (num_clients + 1)
+                    # H_orig_values_gather = [torch.zeros(0, dtype=torch.float32)] * (num_clients + 1)
+                    # H_orig_shape_gather = [torch.zeros(0, dtype=torch.int64)] * (num_clients + 1)
+                    # dist.gather(torch.zeros_like(H_orig0_indices).to(device), gather_list=H_orig_indices_gather, group=group)
+                    # dist.gather(torch.zeros_like(H_orig0_values).to(device), gather_list=H_orig_values_gather, group=group)
+                    # dist.gather(torch.zeros_like(H_orig0_shape).to(device), gather_list=H_orig_shape_gather, group=group)
+                    # H_orig_indices_gather = H_orig_indices_gather[1:]
+                    # H_orig_values_gather = H_orig_values_gather[1:]
+                    # H_orig_shape_gather = H_orig_shape_gather[1:]
+                    # H_orig = [to_dense_coo(H_orig_indices_gather[i], H_orig_values_gather[i], H_orig_shape_gather[i], device=device)
+                    #           for i in range(num_clients)]
                 else:
                     i = rank - 1    # rank 0 is server, i is client index
-                    # dist.gather(H_orig_sparse[i], dst=0, group=group)
-                    # H_orig_sparse_gather = [torch.zeros_like(H_orig_sparse[0])] * num_clients
-                    dist.gather(H_orig[i], dst=0, group=group)
+                    dist.gather_object(H_orig_sparse[i], dst=0, group=group)
+                    H_orig_sparse_gather = [torch.zeros_like(H_orig_sparse[i])] * num_clients
+
+                    # # dense
+                    # dist.gather(H_orig[i], dst=0, group=group)
+
+                    # # sparse
+                    # H_orig_indices, H_orig_values, H_orig_shape = to_sparse_coo(H_orig[i])
+                    # dist.gather(H_orig_indices, dst=0, group=group)
+                    # dist.gather(H_orig_values, dst=0, group=group)
+                    # dist.gather(H_orig_shape, dst=0, group=group)
+
                 ###################################################################################################
 
                 # if rank != 0:
@@ -320,7 +363,7 @@ def train(models, optimizers, epoch, rank, size, group):  # , centers):
                 #     H_orig_need_to_transfer[i] = H_tmp.shape[1] - num
                 #     H_orig[i] = torch.from_numpy(H_tmp).float().cuda(device) # 更新本地的 H_orig[i]
             elif comp == "topk":
-                # If first iteration, do nothing
+                # If first iteration, do not compress
 
                 if rank == 0:
                     gather_list = [torch.zeros_like(H_orig[0])] * (num_clients + 1)
@@ -329,6 +372,7 @@ def train(models, optimizers, epoch, rank, size, group):  # , centers):
                 else:
                     i = rank - 1
                     dist.gather(H_orig[i], dst=0, group=group)
+                    H_orig_sparse_gather = [torch.zeros_like(H_orig[i]).to_sparse()] * num_clients
                 # print(f"3 rank {rank}: {H_orig=}")
             elif args.vecdim == 1:
                 # Scalar quantization
@@ -385,13 +429,14 @@ def train(models, optimizers, epoch, rank, size, group):  # , centers):
         # total_s2c += total_number3
         # # ========= 下面的 Train clients 通信统计 =========
         # print(f"5 rank {rank}: {H_orig=}")
-        # if rank == 0:
-        #     H_orig_sparse_gather = [H_orig[j].to_sparse() for j in range(num_clients)]
-        # for j in range(len(H_orig_sparse_gather)):
-        #     dist.broadcast(H_orig_sparse_gather[j], 0, group=group)
-        # H_orig = [H_orig_sparse_gather[j].to_dense() for j in range(num_clients)]
-        for j in range(len(H_orig)):
-            dist.broadcast(H_orig[j], 0, group=group)
+        if rank == 0:
+            H_orig_sparse_gather = [H_orig[j].to_sparse() for j in range(num_clients)]
+        dist.broadcast_object_list(H_orig_sparse_gather, 0, group=group)
+        H_orig = [H_orig_sparse_gather[j].to_dense().to(device) for j in range(num_clients)]
+
+        # dense
+        # for j in range(len(H_orig)):
+        #     dist.broadcast(H_orig[j], 0, group=group)
 
         # Train clients
         if rank != 0:
