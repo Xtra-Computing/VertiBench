@@ -254,6 +254,8 @@ def train(models, optimizers, epoch, rank, size, group):  # , centers):
             with torch.no_grad(): # client[i] 跑出来结果放入 H_orig[i]
                 H_orig[i] = models[i](x_local) # float32, shape=(512,100)
                 assert H_orig[i] is not None
+            for j in range(len(H_orig)):
+               H_orig[j] = torch.zeros_like(H_orig[i])  # set placeholder for other clients
         else:
             i = 0  # only to obtain shape
             # is a client (not server)
@@ -268,7 +270,7 @@ def train(models, optimizers, epoch, rank, size, group):  # , centers):
             # Compress embedding(取出 H_orig[i], 压缩后放入 H_orig[i])
             H_orig_need_to_transfer = [None] * num_clients  # This variable was added by xxx
 
-        print(f"1: rank {rank}: {H_orig=}")
+        # print(f"1: rank {rank}: {H_orig=}")
         assert comp == "topk", f"Only support topk compression, got {comp}"
         if comp != "":
             if comp == "topk" and not (epoch == 0 and step == 0):
@@ -282,7 +284,7 @@ def train(models, optimizers, epoch, rank, size, group):  # , centers):
                     idx = np.argpartition(grads, num)[:num]
                     indices = idx[np.argsort((grads)[idx])]
                     H_tmp[:, indices[:num]] = 0 # 后面传输的时候，只传输非0的
-                    H_orig_sparse[i] = H_tmp.to_sparse()
+                    # H_orig_sparse[i] = H_tmp.to_sparse()
                 else:
                     i = 0   # get shape only
                     H_tmp = H_orig[i].cpu().detach().numpy().copy()
@@ -291,21 +293,26 @@ def train(models, optimizers, epoch, rank, size, group):  # , centers):
                     idx = np.argpartition(grads, num)[:num]
                     indices = idx[np.argsort((grads)[idx])]
                     H_tmp[:, indices[:num]] = 0  # 后面传输的时候，只传输非0的
-                    H_orig_sparse[i] = H_tmp.to_sparse()
+                    # H_orig_sparse[i] = H_tmp.to_sparse()
 
                 ################## DISTRIBUTED: transfer H_orig_sparse from clients to server ################
                 if rank == 0:
-                    H_orig_sparse_gather = [torch.zeros_like(H_orig_sparse[0])] * (num_clients + 1)
-                    dist.gather(torch.zeros(0), gather_list=H_orig_sparse_gather, group=group)
-                    H_orig_sparse_gather = H_orig_sparse_gather[1:]  # Remove the first server placeholder
-                    H_orig = [H_orig_sparse_gather[i].to_dense() for i in range(num_clients)]
+                    # H_orig_sparse_gather = [torch.zeros_like(H_orig_sparse[0])] * (num_clients + 1)
+                    # dist.gather(torch.zeros(0), gather_list=H_orig_sparse_gather, group=group)
+                    # H_orig_sparse_gather = H_orig_sparse_gather[1:]  # Remove the first server placeholder
+                    # H_orig = [H_orig_sparse_gather[i].to_dense() for i in range(num_clients)]
+
+                    H_orig_gather = [torch.zeros_like(H_orig[0])] * (num_clients + 1)
+                    dist.gather(torch.zeros_like(H_orig[0]), gather_list=H_orig_gather, group=group)
+                    H_orig = H_orig_gather[1:]  # Remove the first server placeholder
                     for i in range(num_clients):
                         assert H_orig[i] is not None
-                    print(f"2: rank {rank}: {H_orig=}")
+                    # print(f"2: rank {rank}: {H_orig=}")
                 else:
                     i = rank - 1    # rank 0 is server, i is client index
-                    dist.gather(H_orig_sparse[i], dst=0, group=group)
-                    H_orig_sparse_gather = [torch.zeros_like(H_orig_sparse[0])] * num_clients
+                    # dist.gather(H_orig_sparse[i], dst=0, group=group)
+                    # H_orig_sparse_gather = [torch.zeros_like(H_orig_sparse[0])] * num_clients
+                    dist.gather(H_orig[i], dst=0, group=group)
                 ###################################################################################################
 
                 # if rank != 0:
@@ -322,7 +329,7 @@ def train(models, optimizers, epoch, rank, size, group):  # , centers):
                 else:
                     i = rank - 1
                     dist.gather(H_orig[i], dst=0, group=group)
-                print(f"3 rank {rank}: {H_orig=}")
+                # print(f"3 rank {rank}: {H_orig=}")
             elif args.vecdim == 1:
                 # Scalar quantization
                 H_orig[i] = quantize_scalar(
@@ -335,11 +342,11 @@ def train(models, optimizers, epoch, rank, size, group):  # , centers):
                     quant_level=args.quant_level,
                     dim=args.vecdim,
                 )
-        print(f"Finish {step}")
+        # print(f"Finish {step}")
 
         # total_number1 = np.sum([h.flatten().shape for h in H_orig])
         # total_c2s += total_number1
-        print(f"4 rank {rank}: {H_orig=}")
+        # print(f"4 rank {rank}: {H_orig=}")
 
         # 压缩 Server model （减少后续传输server model的communication开销，Train clients要用到 server model）
         k_numbers_need_to_transfer = {} # This variable was added by xxx
@@ -377,7 +384,7 @@ def train(models, optimizers, epoch, rank, size, group):  # , centers):
         # total_number3 = np.sum([h.flatten().shape for h in H_orig[1:]]) * num_clients # 不统计自己的 H_orig[i]，因为自己已经算过了。又因为 H_orig[i] 的shape都一样，所以随便扔掉一个就行
         # total_s2c += total_number3
         # # ========= 下面的 Train clients 通信统计 =========
-        print(f"5 rank {rank}: {H_orig=}")
+        # print(f"5 rank {rank}: {H_orig=}")
         # if rank == 0:
         #     H_orig_sparse_gather = [H_orig[j].to_sparse() for j in range(num_clients)]
         # for j in range(len(H_orig_sparse_gather)):
@@ -568,6 +575,9 @@ def run(backend, rank, size, args):
             accs_test,
             epoch,
             train_size,
+            rank=rank,
+            size=size,
+            group=group
         )
 
         # for i in range(num_clients + 1):
