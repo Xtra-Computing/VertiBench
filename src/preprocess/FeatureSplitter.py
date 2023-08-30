@@ -112,8 +112,10 @@ class ImportanceSplitter:
                     line = X[:, selected]
                 Xparties.append(line)
             ans.append(Xparties)
-        return ans
-
+        if len(ans) == 1:
+            return ans[0]
+        else:
+            return ans
     def split(self, X, *args, indices=None, allow_empty_party=False, split_image=False):
         """
         Split X by feature importance.
@@ -437,7 +439,10 @@ class CorrelationSplitter:
                     line = X[:, selected]
                 Xparties.append(line)
             ans.append(Xparties)
-        return ans
+        if len(ans) == 1:
+            return ans[0]
+        else:
+            return ans
 
     # deprecated
     @deprecated.deprecated(reason="Use splitXs instead")
@@ -565,7 +570,9 @@ class SimpleSplitter:
             for feature_ids in indices:
                 Xparties.append(X[:, feature_ids])
             ans.append(Xparties)
-        return ans
-
+        if len(ans) == 1:
+            return ans[0]
+        else:
+            return ans
 
 
