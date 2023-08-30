@@ -283,7 +283,7 @@ def main():
     connect_slurm_node(args.session_name)
     
     if args.measure:
-        process_measure(session_name=args.session_name, rounds=args.rounds, datasets=args.datasets)
+        process_measure(session_name=args.session_name, rounds=args.rounds)
         return
     if args.algorithm == 'cvfl':
         process_cvfl(session_name=args.session_name, rounds=args.rounds, datasets=args.datasets)
@@ -313,6 +313,6 @@ if __name__ == "__main__":
     # `python run-real-dist.py -r 5 -d covtype msd gisette realsim epsilon letter radar -s real-dist -a gal > r5_gal.sh`
     # `python run-real-dist.py -r 5 -d covtype msd gisette realsim epsilon letter radar -s real-dist -a splitnn > r5_splitnn.sh`
     # `python run-real-dist.py -r 5 -a NA -d NA -s background-measurement -m`
-    
+
     # After generating the script, you can run it in the head server
     # `bash r5_fedtree.sh`
