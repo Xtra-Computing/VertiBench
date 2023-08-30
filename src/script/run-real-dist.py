@@ -263,7 +263,7 @@ def process_measure(session_name, window_name = "RealDist", rounds=0):
             party_cmd = collect_nic(party_id, folder, party_cmd)
             party_cmd = f'mkdir -p {folder}; {party_cmd}'
             tmux_send_cmd(session_name, party_id, party_cmd, window_name=window_name)
-        print(f'sleep 1')
+        print(f'sleep 120')
         print('')
 
 

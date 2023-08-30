@@ -1,0 +1,10 @@
+eno1: flags=4163<UP,BROADCAST,RUNNING,MULTICAST>  mtu 1500
+        inet 192.168.47.111  netmask 255.255.255.0  broadcast 192.168.47.255
+        inet6 fe80::3eec:efff:fef3:7dba  prefixlen 64  scopeid 0x20<link>
+        ether 3c:ec:ef:f3:7d:ba  txqueuelen 1000  (Ethernet)
+        RX packets 36664648  bytes 47415579841 (47.4 GB)
+        RX errors 0  dropped 138847  overruns 0  frame 0
+        TX packets 27841021  bytes 31905277785 (31.9 GB)
+        TX errors 0  dropped 0 overruns 0  carrier 0  collisions 0
+        device memory 0xc2120000-c213ffff  
+
