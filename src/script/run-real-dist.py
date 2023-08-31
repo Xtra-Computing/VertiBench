@@ -111,13 +111,13 @@ def process_cvfl(session_name, window_name = "RealDist", rounds=0, datasets=[]):
     tmux_send_cmd4(session_name, cmd=f"clear; pwd; echo 'C-VFL'")
     print("")
     sleep = {
-        'covtype': 40 * 60,
-        'msd': 60 * 60, # <<== not sure how many minutes it will take, so set it to 60 minutes
+        'covtype': 35 * 60,
+        'msd': 30 * 60,
         'gisette': 5 * 60,
         'realsim': 30 * 60,
-        'epsilon': 50 * 60,
+        'epsilon': 35 * 60,
         'letter': 5 * 60,
-        'radar': 30 * 60
+        'radar': 20 * 60
     }
     for i in range(rounds):
         for dataset in datasets:
@@ -125,7 +125,7 @@ def process_cvfl(session_name, window_name = "RealDist", rounds=0, datasets=[]):
             print(f"# Running C-VFL on {dataset}, round {i}")
             base_cmd = f"quant_radar_dist.py -d {dataset} -p 4 -sp imp -w 0.1 -s 0 -g 0 --b 512 --local_epochs 1 --epochs 50 --lr 0.0001 --quant_level 4 --vecdim 1 --comp topk log/comm"
             host_cmd = f"{ENVS} torchrun --nproc_per_node=1 --nnodes=5 --node_rank=0 {TR_ARGS} {base_cmd}"
-            host_cmd = collect_log(0, folder, host_cmd) + " &"
+            host_cmd = collect_log(99, folder, host_cmd) + " &"
             host_cmd = f'mkdir -p {folder}; {host_cmd}'
             tmux_send_cmd(session_name, 0, host_cmd, window_name=window_name)
 
@@ -249,6 +249,23 @@ def process_splitnn(session_name, window_name = "RealDist", rounds=0, datasets=[
             print(f'sleep {sleep[dataset]}')
             print('')
 
+def process_measure(session_name, window_name = "RealDist", rounds=0):
+    tmux_send_cmd4(session_name, cmd=f"conda activate cvfl", wait=2)
+    tmux_send_cmd4(session_name, cmd=f"cd ~/VertiBenchGH")
+    tmux_send_cmd4(session_name, cmd=f"clear; pwd; echo 'Measure'")
+    print("")
+    for i in range(rounds):
+        folder = f"~/{session_name}/measure_round_{i}"
+        print(f"# Running background traffic measurement round {i}")
+        for party_id in range(0, 4):
+            party_cmd = f"{ENVS} sleep 60"
+            party_cmd = collect_log(party_id, folder, party_cmd)
+            party_cmd = collect_nic(party_id, folder, party_cmd)
+            party_cmd = f'mkdir -p {folder}; {party_cmd}'
+            tmux_send_cmd(session_name, party_id, party_cmd, window_name=window_name)
+        print(f'sleep 120')
+        print('')
+
 
 def main():
     parser = argparse.ArgumentParser(description="Real Distributed Script Generator")
@@ -256,6 +273,7 @@ def main():
     parser.add_argument('-r', '--rounds', help="Number of rounds. -r 1", type=int, required=True)
     parser.add_argument('-d', '--datasets', help="What datasets to run. -d covtype, realsim, epsilon, letter, gisette, radar, msd",nargs='+', type=str, required=True)
     parser.add_argument('-s', '--session-name', help="Tmux and experiment shares the same session name. -s test", type=str, required=True)
+    parser.add_argument('-m', '--measure', help="Measure the background network traffic", action='store_true', default=False)
     args = parser.parse_args()
     
 
@@ -264,6 +282,9 @@ def main():
     tmux_create_4windows(args.session_name)
     connect_slurm_node(args.session_name)
     
+    if args.measure:
+        process_measure(session_name=args.session_name, rounds=args.rounds)
+        return
     if args.algorithm == 'cvfl':
         process_cvfl(session_name=args.session_name, rounds=args.rounds, datasets=args.datasets)
     elif args.algorithm == 'fedtree':
@@ -287,10 +308,11 @@ if __name__ == "__main__":
     #      the command is "ps -ef | grep "[s]leep" | grep junyi | awk '{print $2}' | xargs kill -9 "
 
     # Usage Example:
-    # `python run-real-distribution.py -r 5 -d covtype msd gisette realsim epsilon letter radar -s session -a fedtree > r5_fedtree.sh`
-    # `python run-real-distribution.py -r 5 -d covtype msd gisette realsim epsilon letter radar -s session -a cvfl > r5_cvfl.sh`
-    # `python run-real-distribution.py -r 5 -d covtype msd gisette realsim epsilon letter radar -s session -a gal > r5_gal.sh`
-    # `python run-real-distribution.py -r 5 -d covtype msd gisette realsim epsilon letter radar -s session -a splitnn > r5_splitnn.sh`
+    # `python run-real-dist.py -r 5 -d covtype msd gisette realsim epsilon letter radar -s real-dist -a fedtree > r5_fedtree.sh`
+    # `python run-real-dist.py -r 5 -d covtype msd gisette realsim epsilon letter radar -s real-dist -a cvfl > r5_cvfl.sh`
+    # `python run-real-dist.py -r 5 -d covtype msd gisette realsim epsilon letter radar -s real-dist -a gal > r5_gal.sh`
+    # `python run-real-dist.py -r 5 -d covtype msd gisette realsim epsilon letter radar -s real-dist -a splitnn > r5_splitnn.sh`
+    # `python run-real-dist.py -r 5 -a NA -d NA -s background-measurement -m`
 
     # After generating the script, you can run it in the head server
     # `bash r5_fedtree.sh`

@@ -1,0 +1,365 @@
+2023-08-29 22:48:24 Loading data
+Get dataset radar 0 imp 0.1 train 0 4
+Get dataset radar 1 imp 0.1 train 0 4
+Get dataset radar 2 imp 0.1 train 0 4
+Get dataset radar 3 imp 0.1 train 0 4
+Radar have tensor([0, 1, 2, 3, 4, 5, 6]) classes
+Get dataset radar 0 imp 0.1 test 0 4
+Get dataset radar 1 imp 0.1 test 0 4
+Get dataset radar 2 imp 0.1 test 0 4
+Get dataset radar 3 imp 0.1 test 0 4
+Radar have tensor([0, 1, 2, 3, 4, 5, 6]) classes
+2023-08-29 22:48:35 Classes: 7 tensor([0, 1, 2, 3, 4, 5, 6])
+2023-08-29 22:48:35 Namespace(data='log/comm', num_clients=4, gpu=0, epochs=50, batch_size=512, lr=0.0001, momentum=0.9, lr_decay_freq=30, lr_decay=0.1, print_freq=100, resume='', pretrained=False, local_epochs=1, quant_level=4, vecdim=1, comp='topk', seed=0, dataset='radar', splitter='imp', weight='0.1', dataseed='0', folder='2023-08-29 22-48-24')
+🔵 VertiBench_Cls_bottom all_features:  48
+2023-08-29 22:48:35 Client 0 mode VertiBench_Cls_bottom(
+  (linear): Sequential(
+    (0): Linear(in_features=48, out_features=100, bias=True)
+    (1): ReLU()
+    (2): Linear(in_features=100, out_features=100, bias=True)
+    (3): ReLU()
+  )
+)
+🔵 VertiBench_Cls_bottom all_features:  114
+2023-08-29 22:48:35 Client 1 mode VertiBench_Cls_bottom(
+  (linear): Sequential(
+    (0): Linear(in_features=114, out_features=100, bias=True)
+    (1): ReLU()
+    (2): Linear(in_features=100, out_features=100, bias=True)
+    (3): ReLU()
+  )
+)
+🔵 VertiBench_Cls_bottom all_features:  5
+2023-08-29 22:48:35 Client 2 mode VertiBench_Cls_bottom(
+  (linear): Sequential(
+    (0): Linear(in_features=5, out_features=100, bias=True)
+    (1): ReLU()
+    (2): Linear(in_features=100, out_features=100, bias=True)
+    (3): ReLU()
+  )
+)
+🔵 VertiBench_Cls_bottom all_features:  7
+2023-08-29 22:48:35 Client 3 mode VertiBench_Cls_bottom(
+  (linear): Sequential(
+    (0): Linear(in_features=7, out_features=100, bias=True)
+    (1): ReLU()
+    (2): Linear(in_features=100, out_features=100, bias=True)
+    (3): ReLU()
+  )
+)
+🔵 VertiBench_Cls_top num_classes:  7
+2023-08-29 22:48:35 Client 4 mode VertiBench_Cls_top(
+  (linear): Sequential(
+    (0): Linear(in_features=400, out_features=200, bias=True)
+    (1): ReLU()
+    (2): Linear(in_features=200, out_features=7, bias=True)
+  )
+)
+🔵 VertiBench_Cls_top num_classes:  7
+2023-08-29 22:48:35 Server model: VertiBench_Cls_top(
+  (linear): Sequential(
+    (0): Linear(in_features=400, out_features=200, bias=True)
+    (1): ReLU()
+    (2): Linear(in_features=200, out_features=7, bias=True)
+  )
+)
+2023-08-29 22:49:07 
+-----------------------------------
+2023-08-29 22:49:07 Epoch: [1/50]
+Start training
+2023-08-29 22:49:19 Time taken: 11.24 sec.
+2023-08-29 22:49:28 Time taken: 20.34 sec.
+2023-08-29 22:49:28 
+-----------------------------------
+2023-08-29 22:49:28 Epoch: [2/50]
+Start training
+2023-08-29 22:49:39 Time taken: 11.17 sec.
+2023-08-29 22:49:48 Time taken: 19.89 sec.
+2023-08-29 22:49:48 
+-----------------------------------
+2023-08-29 22:49:48 Epoch: [3/50]
+Start training
+2023-08-29 22:49:58 Time taken: 10.56 sec.
+2023-08-29 22:50:07 Time taken: 19.39 sec.
+2023-08-29 22:50:07 
+-----------------------------------
+2023-08-29 22:50:07 Epoch: [4/50]
+Start training
+2023-08-29 22:50:18 Time taken: 10.85 sec.
+2023-08-29 22:50:27 Time taken: 19.82 sec.
+2023-08-29 22:50:27 
+-----------------------------------
+2023-08-29 22:50:27 Epoch: [5/50]
+Start training
+2023-08-29 22:50:37 Time taken: 10.65 sec.
+2023-08-29 22:50:46 Time taken: 18.98 sec.
+2023-08-29 22:50:46 
+-----------------------------------
+2023-08-29 22:50:46 Epoch: [6/50]
+Start training
+2023-08-29 22:50:57 Time taken: 10.90 sec.
+2023-08-29 22:51:06 Time taken: 20.02 sec.
+2023-08-29 22:51:06 
+-----------------------------------
+2023-08-29 22:51:06 Epoch: [7/50]
+Start training
+2023-08-29 22:51:16 Time taken: 10.67 sec.
+2023-08-29 22:51:25 Time taken: 19.16 sec.
+2023-08-29 22:51:25 
+-----------------------------------
+2023-08-29 22:51:25 Epoch: [8/50]
+Start training
+2023-08-29 22:51:36 Time taken: 10.95 sec.
+2023-08-29 22:51:45 Time taken: 20.34 sec.
+2023-08-29 22:51:45 
+-----------------------------------
+2023-08-29 22:51:45 Epoch: [9/50]
+Start training
+2023-08-29 22:51:57 Time taken: 11.32 sec.
+2023-08-29 22:52:05 Time taken: 19.95 sec.
+2023-08-29 22:52:05 
+-----------------------------------
+2023-08-29 22:52:05 Epoch: [10/50]
+Start training
+2023-08-29 22:52:16 Time taken: 10.69 sec.
+2023-08-29 22:52:25 Time taken: 19.95 sec.
+2023-08-29 22:52:25 
+-----------------------------------
+2023-08-29 22:52:25 Epoch: [11/50]
+Start training
+2023-08-29 22:52:37 Time taken: 11.28 sec.
+2023-08-29 22:52:45 Time taken: 19.85 sec.
+2023-08-29 22:52:45 
+-----------------------------------
+2023-08-29 22:52:45 Epoch: [12/50]
+Start training
+2023-08-29 22:52:56 Time taken: 10.56 sec.
+2023-08-29 22:53:04 Time taken: 19.08 sec.
+2023-08-29 22:53:04 
+-----------------------------------
+2023-08-29 22:53:04 Epoch: [13/50]
+Start training
+2023-08-29 22:53:15 Time taken: 10.77 sec.
+2023-08-29 22:53:24 Time taken: 19.91 sec.
+2023-08-29 22:53:24 
+-----------------------------------
+2023-08-29 22:53:24 Epoch: [14/50]
+Start training
+2023-08-29 22:53:35 Time taken: 10.78 sec.
+2023-08-29 22:53:43 Time taken: 19.27 sec.
+2023-08-29 22:53:43 
+-----------------------------------
+2023-08-29 22:53:43 Epoch: [15/50]
+Start training
+2023-08-29 22:53:54 Time taken: 11.03 sec.
+2023-08-29 22:54:04 Time taken: 20.61 sec.
+2023-08-29 22:54:04 
+-----------------------------------
+2023-08-29 22:54:04 Epoch: [16/50]
+Start training
+2023-08-29 22:54:15 Time taken: 11.15 sec.
+2023-08-29 22:54:24 Time taken: 19.83 sec.
+2023-08-29 22:54:24 
+-----------------------------------
+2023-08-29 22:54:24 Epoch: [17/50]
+Start training
+2023-08-29 22:54:35 Time taken: 10.78 sec.
+2023-08-29 22:54:44 Time taken: 19.96 sec.
+2023-08-29 22:54:44 
+-----------------------------------
+2023-08-29 22:54:44 Epoch: [18/50]
+Start training
+2023-08-29 22:54:55 Time taken: 11.04 sec.
+2023-08-29 22:55:04 Time taken: 19.86 sec.
+2023-08-29 22:55:04 
+-----------------------------------
+2023-08-29 22:55:04 Epoch: [19/50]
+Start training
+2023-08-29 22:55:14 Time taken: 10.64 sec.
+2023-08-29 22:55:23 Time taken: 19.38 sec.
+2023-08-29 22:55:23 
+-----------------------------------
+2023-08-29 22:55:23 Epoch: [20/50]
+Start training
+2023-08-29 22:55:34 Time taken: 10.99 sec.
+2023-08-29 22:55:43 Time taken: 20.12 sec.
+2023-08-29 22:55:43 
+-----------------------------------
+2023-08-29 22:55:43 Epoch: [21/50]
+Start training
+2023-08-29 22:55:54 Time taken: 10.88 sec.
+2023-08-29 22:56:03 Time taken: 19.50 sec.
+2023-08-29 22:56:03 
+-----------------------------------
+2023-08-29 22:56:03 Epoch: [22/50]
+Start training
+2023-08-29 22:56:14 Time taken: 11.03 sec.
+2023-08-29 22:56:23 Time taken: 20.37 sec.
+2023-08-29 22:56:23 
+-----------------------------------
+2023-08-29 22:56:23 Epoch: [23/50]
+Start training
+2023-08-29 22:56:34 Time taken: 10.95 sec.
+2023-08-29 22:56:42 Time taken: 19.48 sec.
+2023-08-29 22:56:42 
+-----------------------------------
+2023-08-29 22:56:42 Epoch: [24/50]
+Start training
+2023-08-29 22:56:53 Time taken: 10.73 sec.
+2023-08-29 22:57:02 Time taken: 19.70 sec.
+2023-08-29 22:57:02 
+-----------------------------------
+2023-08-29 22:57:02 Epoch: [25/50]
+Start training
+2023-08-29 22:57:14 Time taken: 11.33 sec.
+2023-08-29 22:57:22 Time taken: 19.51 sec.
+2023-08-29 22:57:22 
+-----------------------------------
+2023-08-29 22:57:22 Epoch: [26/50]
+Start training
+2023-08-29 22:57:32 Time taken: 10.79 sec.
+2023-08-29 22:57:41 Time taken: 19.52 sec.
+2023-08-29 22:57:41 
+-----------------------------------
+2023-08-29 22:57:41 Epoch: [27/50]
+Start training
+2023-08-29 22:57:52 Time taken: 11.11 sec.
+2023-08-29 22:58:02 Time taken: 20.48 sec.
+2023-08-29 22:58:02 
+-----------------------------------
+2023-08-29 22:58:02 Epoch: [28/50]
+Start training
+2023-08-29 22:58:12 Time taken: 10.75 sec.
+2023-08-29 22:58:21 Time taken: 19.51 sec.
+2023-08-29 22:58:21 
+-----------------------------------
+2023-08-29 22:58:21 Epoch: [29/50]
+Start training
+2023-08-29 22:58:32 Time taken: 11.04 sec.
+2023-08-29 22:58:41 Time taken: 20.21 sec.
+2023-08-29 22:58:41 
+-----------------------------------
+2023-08-29 22:58:41 Epoch: [30/50]
+Start training
+2023-08-29 22:58:52 Time taken: 10.61 sec.
+2023-08-29 22:59:01 Time taken: 19.54 sec.
+2023-08-29 22:59:01 
+-----------------------------------
+2023-08-29 22:59:01 Epoch: [31/50]
+Start training
+2023-08-29 22:59:12 Time taken: 10.84 sec.
+2023-08-29 22:59:21 Time taken: 19.95 sec.
+2023-08-29 22:59:21 
+-----------------------------------
+2023-08-29 22:59:21 Epoch: [32/50]
+Start training
+2023-08-29 22:59:32 Time taken: 11.28 sec.
+2023-08-29 22:59:41 Time taken: 19.72 sec.
+2023-08-29 22:59:41 
+-----------------------------------
+2023-08-29 22:59:41 Epoch: [33/50]
+Start training
+2023-08-29 22:59:51 Time taken: 10.52 sec.
+2023-08-29 23:00:00 Time taken: 19.24 sec.
+2023-08-29 23:00:00 
+-----------------------------------
+2023-08-29 23:00:00 Epoch: [34/50]
+Start training
+2023-08-29 23:00:11 Time taken: 11.01 sec.
+2023-08-29 23:00:20 Time taken: 20.07 sec.
+2023-08-29 23:00:20 
+-----------------------------------
+2023-08-29 23:00:20 Epoch: [35/50]
+Start training
+2023-08-29 23:00:31 Time taken: 10.79 sec.
+2023-08-29 23:00:39 Time taken: 19.39 sec.
+2023-08-29 23:00:39 
+-----------------------------------
+2023-08-29 23:00:39 Epoch: [36/50]
+Start training
+2023-08-29 23:00:50 Time taken: 10.79 sec.
+2023-08-29 23:00:59 Time taken: 19.90 sec.
+2023-08-29 23:00:59 
+-----------------------------------
+2023-08-29 23:00:59 Epoch: [37/50]
+Start training
+2023-08-29 23:01:10 Time taken: 11.02 sec.
+2023-08-29 23:01:19 Time taken: 19.81 sec.
+2023-08-29 23:01:19 
+-----------------------------------
+2023-08-29 23:01:19 Epoch: [38/50]
+Start training
+2023-08-29 23:01:30 Time taken: 10.88 sec.
+2023-08-29 23:01:39 Time taken: 20.19 sec.
+2023-08-29 23:01:39 
+-----------------------------------
+2023-08-29 23:01:39 Epoch: [39/50]
+Start training
+2023-08-29 23:01:50 Time taken: 10.94 sec.
+2023-08-29 23:01:59 Time taken: 19.35 sec.
+2023-08-29 23:01:59 
+-----------------------------------
+2023-08-29 23:01:59 Epoch: [40/50]
+Start training
+2023-08-29 23:02:09 Time taken: 10.81 sec.
+2023-08-29 23:02:18 Time taken: 19.53 sec.
+2023-08-29 23:02:18 
+-----------------------------------
+2023-08-29 23:02:18 Epoch: [41/50]
+Start training
+2023-08-29 23:02:29 Time taken: 11.17 sec.
+2023-08-29 23:02:38 Time taken: 20.16 sec.
+2023-08-29 23:02:38 
+-----------------------------------
+2023-08-29 23:02:38 Epoch: [42/50]
+Start training
+2023-08-29 23:02:49 Time taken: 10.87 sec.
+2023-08-29 23:02:58 Time taken: 19.76 sec.
+2023-08-29 23:02:58 
+-----------------------------------
+2023-08-29 23:02:58 Epoch: [43/50]
+Start training
+2023-08-29 23:03:09 Time taken: 10.79 sec.
+2023-08-29 23:03:18 Time taken: 20.17 sec.
+2023-08-29 23:03:18 
+-----------------------------------
+2023-08-29 23:03:18 Epoch: [44/50]
+Start training
+2023-08-29 23:03:29 Time taken: 10.40 sec.
+2023-08-29 23:03:37 Time taken: 19.06 sec.
+2023-08-29 23:03:37 
+-----------------------------------
+2023-08-29 23:03:37 Epoch: [45/50]
+Start training
+2023-08-29 23:03:48 Time taken: 10.94 sec.
+2023-08-29 23:03:57 Time taken: 19.99 sec.
+2023-08-29 23:03:57 
+-----------------------------------
+2023-08-29 23:03:57 Epoch: [46/50]
+Start training
+2023-08-29 23:04:08 Time taken: 10.82 sec.
+2023-08-29 23:04:16 Time taken: 19.20 sec.
+2023-08-29 23:04:16 
+-----------------------------------
+2023-08-29 23:04:16 Epoch: [47/50]
+Start training
+2023-08-29 23:04:27 Time taken: 10.99 sec.
+2023-08-29 23:04:36 Time taken: 19.79 sec.
+2023-08-29 23:04:36 
+-----------------------------------
+2023-08-29 23:04:36 Epoch: [48/50]
+Start training
+2023-08-29 23:04:47 Time taken: 11.17 sec.
+2023-08-29 23:04:56 Time taken: 19.97 sec.
+2023-08-29 23:04:56 
+-----------------------------------
+2023-08-29 23:04:56 Epoch: [49/50]
+Start training
+2023-08-29 23:05:07 Time taken: 10.82 sec.
+2023-08-29 23:05:16 Time taken: 20.00 sec.
+2023-08-29 23:05:16 
+-----------------------------------
+2023-08-29 23:05:16 Epoch: [50/50]
+Start training
+2023-08-29 23:05:27 Time taken: 10.98 sec.
+2023-08-29 23:05:37 Time taken: 20.31 sec.

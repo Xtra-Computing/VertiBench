@@ -575,7 +575,7 @@ def init_processes(rank, size, backend='gloo', args=None):
 def run(backend, rank, size, args):
     group = dist.new_group([i for i in range(size)])
     global device
-    device = torch.device(f"cuda:{args.gpu + rank}" if torch.cuda.is_available() else "cpu")
+    device = torch.device(f"cuda:{args.gpu}" if torch.cuda.is_available() else "cpu")
     for model in models:
         model.to(device)
     server_model_comp.to(device)
