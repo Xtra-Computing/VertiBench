@@ -1,9 +1,5 @@
 # VertiBench
 
-## Satellite Dataset
-
-Please see [Satellite.md](Satellite.md) for the description and [Satellite.ipynb](Satellite.ipynb) for the visualization.
-
 ## Prerequisites
 
 ### Prepare the environment
