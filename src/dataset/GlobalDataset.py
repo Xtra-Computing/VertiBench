@@ -71,7 +71,7 @@ class GlobalDataset(Dataset):
         return cls(X, y)
 
     @classmethod
-    def from_file(cls, path, label_column=1):
+    def from_file(cls, path, label_column=-1):
         """
         Load dataset from file according to the file extension.
         Parameters

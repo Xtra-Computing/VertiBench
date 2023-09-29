@@ -7,6 +7,7 @@ import os
 import sys
 import warnings
 import time
+from typing import Iterable
 
 import numpy as np
 import pandas as pd
@@ -79,6 +80,13 @@ def split_vertical_data(*X, num_parties=4,
     elif splitter == 'corr':
         evaluator = CorrelationEvaluator(corr_func=corr_func, gpu_id=gpu_id)
         splitter = CorrelationSplitter(num_parties, evaluator, seed, gpu_id=gpu_id, n_jobs=n_jobs)
+        # if isinstance(beta, Iterable):
+        #     X_concat = np.concatenate(*X, axis=0)
+        #     splitter.fit(X_concat, verbose=verbose, split_image=split_image)
+        #     for b in beta:
+        #         Xs = splitter.splitXs(*X, beta=b, verbose=verbose, split_image=split_image)
+        # else:
+        #     Xs = splitter.fit_splitXs(*X, beta=beta, verbose=verbose, split_image=split_image)
         Xs = splitter.fit_splitXs(*X, beta=beta, verbose=verbose, split_image=split_image)
     elif splitter == 'simple':
         splitter = SimpleSplitter(num_parties)
@@ -102,11 +110,13 @@ if __name__ == '__main__':
     parser.add_argument('--verbose', '-v', action='store_true')
     parser.add_argument('--eval-time', '-et', action='store_true', help="whether to evaluate the time cost. If True, "
                                                                         "saving dataset will be skipped.")
-    parser.add_argument('--label-column', '-lc', type=int, default=1, help="the column index of the label. -1 means the last column.")
+    parser.add_argument('--label-column', '-lc', type=int, default=-1, help="the column index of the label. -1 means the last column.")
     parser.add_argument('--corr-func', '-cf', type=str, default='spearmanr',
                         help="correlation function for the CorrelationSplitter, should be in ['spearmanr', 'spearmann_pandas']")
     parser.add_argument('--split-image', '-si', default=False, action='store_true', help="whether to split image dataset")
     parser.add_argument('--shift-y', '-shy', default=0, type=int, help="Shift the y values by a constant")
+    parser.add_argument('--decimal', default=1, type=int, help="Decimal places for the weight or beta")
+    parser.add_argument('--uniform', '-u', default=False, action='store_true', help="Whether to uniformly split the dataset")
     args = parser.parse_args()
 
     if args.jobs > 1:
@@ -128,16 +138,29 @@ if __name__ == '__main__':
         ys.append(y)
 
     start_time = time.time()
-    Xs_split = split_vertical_data(*Xs, num_parties=args.num_parties,
-                                splitter=args.splitter,
-                                weights=args.weights,
-                                beta=args.beta,
-                                seed=args.seed,
-                                gpu_id=args.gpu_id,
-                                n_jobs=args.jobs,
-                                verbose=args.verbose,
-                                split_image=args.split_image,
-                                corr_func=args.corr_func)
+    if not args.uniform:
+        Xs_split = split_vertical_data(*Xs, num_parties=args.num_parties,
+                                    splitter=args.splitter,
+                                    weights=args.weights,
+                                    beta=args.beta,
+                                    seed=args.seed,
+                                    gpu_id=args.gpu_id,
+                                    n_jobs=args.jobs,
+                                    verbose=args.verbose,
+                                    split_image=args.split_image,
+                                    corr_func=args.corr_func)
+        if len(Xs) == 1:
+            Xs_split = [Xs_split]
+    else:
+        Xs_split = []
+        np.random.seed(args.seed)
+        feature_shuffle_indices = np.random.permutation(Xs[0].shape[1])
+        if isinstance(Xs, Iterable):
+            for X in Xs:
+                Xs_split.append(np.array_split(X[:, feature_shuffle_indices], args.num_parties, axis=1))
+        else:
+            Xs_split.append(np.array_split(Xs[:, feature_shuffle_indices], args.num_parties, axis=1))
+
     end_time = time.time()
     print(f"Time cost: {end_time - start_time:.2f}s")
 
@@ -154,7 +177,8 @@ if __name__ == '__main__':
         random_indices = np.random.permutation(Xparty[0].shape[0])
 
         for party_id in range(args.num_parties):
-            path = PartyPath(paths[i], args.num_parties, party_id, args.splitter, args.weights, args.beta, args.seed, fmt='pkl')
+            path = PartyPath(paths[i], args.num_parties, party_id, args.splitter, args.weights, args.beta, args.seed,
+                             fmt='pkl', decimal=args.decimal)
             X = Xparty[party_id]    
             y = ys[i]
             
@@ -162,13 +186,13 @@ if __name__ == '__main__':
 
             X, y = X[random_indices], y[random_indices]
 
-            print(f"Saving train party {party_id}: {X.shape}")
+            print(f"Saving train party {party_id}: {X.shape} to {path.train_data}")
             X_train, y_train = X[:n_train_samples], y[:n_train_samples]
             local_train_dataset = LocalDataset(X_train, y_train)
             local_train_dataset.to_pickle(path.train_data)
             
             if args.test != 0:
-                print(f"Saving test party {party_id}: {X.shape}")
+                print(f"Saving test party {party_id}: {X.shape} to {path.test_data}")
                 X_test, y_test = X[n_train_samples:], y[n_train_samples:]
                 local_test_dataset = LocalDataset(X_test, y_test)
                 local_test_dataset.to_pickle(path.test_data)

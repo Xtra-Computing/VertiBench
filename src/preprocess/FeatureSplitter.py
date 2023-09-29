@@ -428,6 +428,10 @@ class CorrelationSplitter:
         else:
             party_to_feature = indices
 
+        if kwargs['verbose']:
+            sorted_feature_indices = [np.sort(party) for party in party_to_feature]
+            print("Sorted feature indices: ", sorted_feature_indices)
+
         for X in Xs:
             Xparties = []
             for i in range(self.num_parties):

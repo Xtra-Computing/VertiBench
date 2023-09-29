@@ -143,7 +143,8 @@ class VFLSynAlignedDataset(VFLAlignedDataset):
 
     @classmethod
     def from_pickle(cls, dir: str, dataset: str, n_parties, primary_party_id: int = 0,
-                    splitter: str = 'imp', weight: float = 1, beta: float = 1, seed: int = 0, type='train'):
+                    splitter: str = 'imp', weight: float = 1, beta: float = 1, seed: int = 0, type='train',
+                    decimal=1):
         """
         Load a VFLAlignedDataset from pickle file. The pickle files are local datasets of each party.
 
@@ -172,7 +173,7 @@ class VFLSynAlignedDataset(VFLAlignedDataset):
         local_datasets = []
         for party_id in range(n_parties):
             path_in_dir = PartyPath(dataset_path=dataset, n_parties=n_parties, party_id=party_id,
-                                    splitter=splitter, weight=weight, beta=beta, seed=seed, fmt='pkl').data(type)
+                                    splitter=splitter, weight=weight, beta=beta, seed=seed, fmt='pkl', decimal=decimal).data(type)
             path = os.path.join(dir, path_in_dir)
             if not os.path.exists(path):
                 raise FileNotFoundError(f"File {path} does not exist")

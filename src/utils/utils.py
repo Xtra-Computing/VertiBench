@@ -8,7 +8,7 @@ from sklearn.metrics import accuracy_score, mean_squared_error
 
 class PartyPath:
     def __init__(self, dataset_path, n_parties, party_id=0, splitter='imp', weight=1, beta=1, seed=None,
-                 fmt='pkl', comm_root=None):
+                 fmt='pkl', comm_root=None, decimal=1):
         self.dataset_path = dataset_path
         path = pathlib.Path(self.dataset_path)
         self.dataset_name = path.stem
@@ -20,17 +20,18 @@ class PartyPath:
         self.seed = seed
         self.fmt = fmt
         self.comm_root = comm_root  # the root of communication log
+        self.decimal = decimal
 
     def data(self, type='train'):
         path = pathlib.Path(self.dataset_path)
         if self.splitter == 'imp':
             # insert meta information before the file extension (extension may not be .csv)
             path = path.with_name(f"{path.stem}_party{self.n_parties}-{self.party_id}_{self.splitter}"
-                                  f"_weight{self.weight:.1f}"
+                                  f"_weight{self.weight:.{self.decimal}f}"
                                   f"{'_seed' + str(self.seed) if self.seed is not None else ''}_{type}.{self.fmt}")
         elif self.splitter == 'corr':
             path = path.with_name(f"{path.stem}_party{self.n_parties}-{self.party_id}_{self.splitter}"
-                                  f"_beta{self.beta:.1f}"
+                                  f"_beta{self.beta:.{self.decimal}f}"
                                   f"{'_seed' + str(self.seed) if self.seed is not None else ''}_{type}.{self.fmt}")
         elif self.splitter == 'simple':
             path = path.with_name(f"{path.stem}_party{self.n_parties}-{self.party_id}"
@@ -56,10 +57,10 @@ class PartyPath:
         os.makedirs(comm_dir, exist_ok=True)
         path = pathlib.Path(comm_dir)
         if self.splitter == 'imp':
-            path = path / (f"{self.dataset_name}_party{self.n_parties}_{self.splitter}_weight{self.weight:.1f}"
+            path = path / (f"{self.dataset_name}_party{self.n_parties}_{self.splitter}_weight{self.weight:.{self.decimal}f}"
                            f"{'_seed' + str(self.seed) if self.seed is not None else ''}.log")
         elif self.splitter == 'corr':
-            path = path / (f"{self.dataset_name}_party{self.n_parties}_{self.splitter}_beta{self.beta:.1f}"
+            path = path / (f"{self.dataset_name}_party{self.n_parties}_{self.splitter}_beta{self.beta:.{self.decimal}f}"
                            f"{'_seed' + str(self.seed) if self.seed is not None else ''}.log")
         elif self.splitter == 'simple':
             path = path / (f"{self.dataset_name}_party{self.n_parties}_{self.splitter}.log")

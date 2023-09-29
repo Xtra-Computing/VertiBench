@@ -645,7 +645,6 @@ class CorrelationEvaluator:
             plt.show()
         else:
             plt.savefig(save_path)
-            plt.close()
 
 
 if __name__ == '__main__':
