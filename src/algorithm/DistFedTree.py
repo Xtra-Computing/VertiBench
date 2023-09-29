@@ -126,10 +126,11 @@ if __name__ == '__main__':
         print("Starting Server")
         binary_path = "./algo/FedTree/build/bin/FedTree-distributed-server"
         os.system(f"{binary_path} {conf_path} &")
-
+    os.system("sleep 20")
     print("Starting Party")
     # train model by invoking the FedTree binary
     binary_path = "./algo/FedTree/build/bin/FedTree-distributed-party"
     if not os.path.exists(binary_path):
         raise FileNotFoundError("FedTree binary not found. Please build the binary first.")
     os.system(f"{binary_path} {conf_path} {args.party}")
+    os.system("ps -ef | grep fed | awk '{print $2}' | xargs kill -9 ")
