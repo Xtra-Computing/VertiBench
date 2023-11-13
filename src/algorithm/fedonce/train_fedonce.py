@@ -191,5 +191,9 @@ if __name__ == '__main__':
         optimizer='adam',
         privacy=None
     )
-    acc, _, _, _ = aggregate_model.train(Xs_train, y_train, Xs_test, y_test, use_cache=False)
-    print(f"Final Score: {acc}")
+    acc, _, rmse, _ = aggregate_model.train(Xs_train, y_train, Xs_test, y_test, use_cache=False)
+    
+    if args.n_classes == 1:
+        print(f"Final Score: {rmse}")
+    else:
+        print(f"Final Score: {acc}")
