@@ -3,6 +3,7 @@ cache/
 algo
 data
 
+events.*
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
