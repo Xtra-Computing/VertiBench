@@ -117,14 +117,14 @@ e.set_label("Real Scope")
 ax.add_artist(e)
 
 # print(np.max([np.max(wide_shuffle_beta_round),np.max(vehicle_shuffle_beta_round),np.max(satellite_shuffle_beta_round)]))
-e = Rectangle(xy=(3.5, 0.5), width=60, height=1, color='red')
+e = Rectangle(xy=(0.8, 0.5), width=60, height=1, color='red')
 e.set_clip_box(ax.bbox)
 e.set_alpha(0.08)
 e.set_color("red")
 e.set_label("Uniform Scope")
 ax.add_artist(e)
 
-p1 = ax.scatter(aa, bb, c="green", marker="o", label=rf"VertiBench",
+p1 = ax.scatter(aa, bb, c="green", marker="o", label=rf"VertiBench Data",
            s=100, clip_on=False, alpha=0.8)
 
 

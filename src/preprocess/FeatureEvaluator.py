@@ -215,7 +215,7 @@ class CorrelationEvaluator:
 
         # d = corr.shape[0]
         singular_values = np.linalg.svd(corr)[1]
-        score = np.std(singular_values)
+        score = np.std(singular_values, ddof=1) / np.sqrt(min(corr.shape))
 
         # end_time = time.time()
         # print(f"Time for calculating the correlation score: {end_time - start_time}")
@@ -238,9 +238,9 @@ class CorrelationEvaluator:
         # EX2 = np.linalg.norm(corr, ord='fro') ** 2 / min(corr.shape)
         # EX = np.linalg.norm(corr, ord='nuc') / min(corr.shape)
         # score = np.sqrt(EX2 - EX ** 2)
-
+        d = min(corr.shape[0], corr.shape[1])
         vals = np.linalg.svd(corr, compute_uv=False)
-        score = np.std(vals)
+        score = np.std(vals, ddof=1) / np.sqrt(d)
 
         # end_time = time.time()
         # print(f"Time for calculating the correlation score: {end_time - start_time}")
@@ -263,8 +263,8 @@ class CorrelationEvaluator:
         # score = torch.sqrt(EX2 - EX ** 2)
 
         singular_values = torch.linalg.svdvals(corr)
-        singular_shape = min(corr.shape)
-        score = torch.std(singular_values)
+        d = min(corr.shape)
+        score = torch.std(singular_values) / np.sqrt(d)
         # end_time = time.time()
         # print(f"Time for calculating the correlation score: {end_time - start_time}")
         return float(score.item())
@@ -295,7 +295,7 @@ class CorrelationEvaluator:
                                  random_state=random_state)
         singular_shape = min(corr.shape)
         s_append_zero = np.concatenate((singular_values, np.zeros(singular_shape - singular_values.shape[0])))
-        score = np.std(s_append_zero)
+        score = np.std(s_append_zero, ddof=1) / np.sqrt(singular_shape)
 
         # end_time = time.time()
         # print(f"Time for calculating the correlation score: {end_time - start_time}")
@@ -325,7 +325,7 @@ class CorrelationEvaluator:
         singular_shape = min(corr.shape)
         s_append_zero = torch.concatenate((singular_values,
                                            torch.zeros(singular_shape - singular_values.shape[0]).to(corr.device)))
-        score = torch.std(s_append_zero)
+        score = torch.std(s_append_zero) / np.sqrt(singular_shape)
 
         # end_time = time.time()
         # print(f"Time for calculating the correlation score: {end_time - start_time}")
@@ -371,13 +371,12 @@ class CorrelationEvaluator:
         else:
             raise ValueError(f"Unknown algorithm: {self.svd_algo}")
 
-    def _get_inner_and_inter_corr(self, corr, n_features_on_party):
+    def _get_inner_and_inter_corr(self, corr, n_features_on_party, symmetric=True):
         """
         Calculate the inner-party and inter-party correlation matrices.
         :param corr: [np.ndarray] correlation matrix
         :param n_features_on_party: [list] number of features on each party
-        :return: [1D np.ndarray] inner-party correlation scores (size: number of parties)
-                 [2D np.ndarray] inter-party correlation scores (size: number of parties x (number of parties - 1))
+        :return: [2D np.ndarray] correlation scores (size: number of parties x number of parties)
         """
         n_parties = len(n_features_on_party)
         assert sum(n_features_on_party) == corr.shape[0] == corr.shape[1], \
@@ -386,20 +385,24 @@ class CorrelationEvaluator:
         corr_cut_points = np.cumsum(n_features_on_party)
         corr_cut_points = np.insert(corr_cut_points, 0, 0)
 
-        inner_mcors = []
-        inter_mcors = []
+        mcors = np.zeros((n_parties, n_parties))
         for i in range(n_parties):
             for j in range(n_parties):
                 start_i = corr_cut_points[i]
                 end_i = corr_cut_points[i + 1]
                 start_j = corr_cut_points[j]
                 end_j = corr_cut_points[j + 1]
-                if i == j:
-                    inner_mcors.append(self.mcor_singular(corr[start_i:end_i, start_j:end_j]))
-                else:
-                    inter_mcors.append(self.mcor_singular(corr[start_i:end_i, start_j:end_j]))
 
-        return np.array(inner_mcors), np.array(inter_mcors)
+                if symmetric and j > i:
+                    continue
+
+                mcors[i][j] = self.mcor_singular(corr[start_i:end_i, start_j:end_j])
+
+        if symmetric:
+            for i in range(n_parties):
+                for j in range(i + 1, n_parties):
+                    mcors[i][j] = mcors[j][i]
+        return mcors
 
     def _get_inter_corr(self, corr, n_features_on_party, symmetric=True):
         """
@@ -450,68 +453,19 @@ class CorrelationEvaluator:
         :param mcor_func: [callable] function to calculate the overall correlation score of a correlation matrix
         :return: [float] correlation score
         """
-        inter_mcors = self._get_inter_corr(corr, n_features_on_party, mcor_func)
-        return np.mean(inter_mcors)
+        # inter_mcors = self._get_inter_corr(corr, n_features_on_party, mcor_func)
+        mcors = self._get_inner_and_inter_corr(corr, n_features_on_party)
+        N = mcors.shape[0]
 
-    @deprecated.deprecated(reason="This function is deprecated. Please use overall_corr_score instead.")
-    def overall_corr_score_diff(self, corr, n_features_on_party, mcor_func: callable = mcor_singular):
-        """
-        Calculate the correlation score of a correlation matrix. This is a three-party example of corr:
-        [ v1 v1 .  .  .  .  ]
-        [ v1 v1 .  .  .  .  ]
-        [ .  .  v2 v2 .  .  ]
-        [ .  .  v2 v2 .  .  ]
-        [ .  .  .  .  v3 v3 ]
-        [ .  .  .  .  v3 v3 ]
-        v1, v2, v3 represent inner-party correlation matrices of each party. This function only evaluates the
-        arithmetic mean of differences between the inter-party correlation scores and the inner-party correlation
-        scores for each party.
-        :param corr: [np.ndarray] correlation matrix
-        :param n_features_on_party: [list] number of features on each party
-        :param mcor_func: [callable] function to calculate the correlation score of a correlation matrix
-        :return: [float] correlation score
-        """
-        start_time = time.time()
-        inner_mcors, inter_mcors = self._get_inner_and_inter_corr(corr, n_features_on_party, mcor_func)
-        end_time = time.time()
-        print(f"Time to calculate variance of singular values: {end_time - start_time:.2f} seconds")
-
-
-        start_time = time.time()
-        inter_mean_mcor = np.mean(np.array(inter_mcors).flatten())
-        inner_mean_mcor = np.mean(np.array(inner_mcors).flatten())
-        assert inter_mean_mcor >= 0, f"inter_mean_mcor: {inter_mean_mcor} should be non-negative"
-        end_time = time.time()
-        print(f"Time to summarize correlation scores: {end_time - start_time:.2f} seconds")
-
-        return inter_mean_mcor - self.gamma * inner_mean_mcor
-
-    @deprecated.deprecated(reason="This function is deprecated. Please use overall_corr_score instead.")
-    def overall_corr_score_ratio(self, corr, n_features_on_party, mcor_func: callable = mcor_singular):
-        """
-        Calculate the correlation score of a correlation matrix. This is a three-party example of corr:
-        [ v1 v1 .  .  .  .  ]
-        [ v1 v1 .  .  .  .  ]
-        [ .  .  v2 v2 .  .  ]
-        [ .  .  v2 v2 .  .  ]
-        [ .  .  .  .  v3 v3 ]
-        [ .  .  .  .  v3 v3 ]
-        v1, v2, v3 represent inner-party correlation matrices of each party. This function only evaluates the
-        mean of ratios between the inner-party correlation scores and the inter-party correlation
-        scores for each party.
-        :param corr: [np.ndarray] correlation matrix
-        :param n_features_on_party: [list] number of features on each party
-        :param mcor_func: [callable] function to calculate the correlation score of a correlation matrix
-        :return: [float] correlation score
-        """
-
-        inner_mcors, inter_mcors = self._get_inner_and_inter_corr(corr, n_features_on_party, mcor_func)
-
-        inter_inner_ratio_summary = []
-        for inner_mcor_i, inter_mcors_i in zip(inner_mcors, inter_mcors):
-            inter_inner_ratio = inter_mcors_i / (inner_mcor_i + 1e-8)
-            inter_inner_ratio_summary.append(np.mean(inter_inner_ratio))
-        return np.mean(inter_inner_ratio_summary)
+        # calculate the absolute difference between the inner-party correlation scores and the inter-party correlation
+        # for each party
+        diffs = np.zeros(N)
+        for i in range(N):
+            for j in range(N):
+                if i != j:
+                    diffs[i] += (mcors[j][i] - mcors[i][i])     # in range [-1, 1]
+            diffs[i] /= (N - 1)
+        return np.mean(diffs)
 
     @staticmethod
     def check_data(Xs):

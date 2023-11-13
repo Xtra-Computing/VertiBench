@@ -33,7 +33,8 @@ def split_vertical_data(*X, num_parties=4,
                         gpu_id=None,
                         n_jobs=1,
                         verbose=False,
-                        split_image=False):
+                        split_image=False,
+                        fast_mode=False):
     """
     Split a dataset into vertical partitions.
 
@@ -61,6 +62,10 @@ def split_vertical_data(*X, num_parties=4,
         number of jobs for the CorrelationSplitter
     verbose: bool
         whether to print verbose information
+    split_image: bool
+        whether to split image dataset
+    fast_mode: bool
+        whether to use fast mode for correlation splitter
 
     Returns
     -------
@@ -76,7 +81,8 @@ def split_vertical_data(*X, num_parties=4,
     # split data
     if splitter == 'imp':
         splitter = ImportanceSplitter(num_parties, weights, seed)
-        Xs = splitter.splitXs(*X, allow_empty_party=False, split_image=split_image)     # by default, we do not allow empty parties
+        Xs = splitter.splitXs(*X, allow_empty_party=False,
+                              split_image=split_image)  # by default, we do not allow empty parties
     elif splitter == 'corr':
         evaluator = CorrelationEvaluator(corr_func=corr_func, gpu_id=gpu_id)
         splitter = CorrelationSplitter(num_parties, evaluator, seed, gpu_id=gpu_id, n_jobs=n_jobs)
@@ -87,20 +93,28 @@ def split_vertical_data(*X, num_parties=4,
         #         Xs = splitter.splitXs(*X, beta=b, verbose=verbose, split_image=split_image)
         # else:
         #     Xs = splitter.fit_splitXs(*X, beta=beta, verbose=verbose, split_image=split_image)
-        Xs = splitter.fit_splitXs(*X, beta=beta, verbose=verbose, split_image=split_image)
+        if fast_mode:
+            Xs = splitter.fit_splitXs(*X, beta=beta, verbose=verbose, split_image=split_image,
+                                      n_elites=20, n_offsprings=70, n_mutants=10, n_gen=100, bias=0.7)
+        else:
+            Xs = splitter.fit_splitXs(*X, beta=beta, verbose=verbose, split_image=split_image)
     elif splitter == 'simple':
         splitter = SimpleSplitter(num_parties)
         Xs = splitter.splitXs(*X)
     else:
-        raise NotImplementedError(f"Splitter {splitter} is not implemented. splitter should be in ['imp', 'corr', 'simple']")
+        raise NotImplementedError(
+            f"Splitter {splitter} is not implemented. splitter should be in ['imp', 'corr', 'simple']")
 
     return Xs
 
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('dataset_paths', type=str, nargs='+', help="paths of the datasets to be split (one or multiple with the same columns)")
+    parser.add_argument('dataset_paths', type=str, nargs='+',
+                        help="paths of the datasets to be split (one or multiple with the same columns)")
     parser.add_argument('--num_parties', '-p', type=int)
-    parser.add_argument('--splitter', '-sp', type=str, default='imp', help="splitter type, should be in ['imp', 'corr', 'simple']")
+    parser.add_argument('--splitter', '-sp', type=str, default='imp',
+                        help="splitter type, should be in ['imp', 'corr', 'simple']")
     parser.add_argument('--weights', '-w', type=float, default=1, help="weights for the ImportanceSplitter")
     parser.add_argument('--beta', '-b', type=float, default=1, help="beta for the CorrelationSplitter")
     parser.add_argument('--seed', '-s', type=int, default=None)
@@ -110,13 +124,18 @@ if __name__ == '__main__':
     parser.add_argument('--verbose', '-v', action='store_true')
     parser.add_argument('--eval-time', '-et', action='store_true', help="whether to evaluate the time cost. If True, "
                                                                         "saving dataset will be skipped.")
-    parser.add_argument('--label-column', '-lc', type=int, default=-1, help="the column index of the label. -1 means the last column.")
+    parser.add_argument('--label-column', '-lc', type=int, default=-1,
+                        help="the column index of the label. -1 means the last column.")
     parser.add_argument('--corr-func', '-cf', type=str, default='spearmanr',
                         help="correlation function for the CorrelationSplitter, should be in ['spearmanr', 'spearmann_pandas']")
-    parser.add_argument('--split-image', '-si', default=False, action='store_true', help="whether to split image dataset")
+    parser.add_argument('--split-image', '-si', default=False, action='store_true',
+                        help="whether to split image dataset")
     parser.add_argument('--shift-y', '-shy', default=0, type=int, help="Shift the y values by a constant")
     parser.add_argument('--decimal', default=1, type=int, help="Decimal places for the weight or beta")
-    parser.add_argument('--uniform', '-u', default=False, action='store_true', help="Whether to uniformly split the dataset")
+    parser.add_argument('--uniform', '-u', default=False, action='store_true',
+                        help="Whether to uniformly split the dataset")
+    parser.add_argument('--fast', '-f', default=False, action='store_true',
+                        help="Whether to use fast mode for correlation splitter")
     args = parser.parse_args()
 
     if args.jobs > 1:
@@ -140,15 +159,16 @@ if __name__ == '__main__':
     start_time = time.time()
     if not args.uniform:
         Xs_split = split_vertical_data(*Xs, num_parties=args.num_parties,
-                                    splitter=args.splitter,
-                                    weights=args.weights,
-                                    beta=args.beta,
-                                    seed=args.seed,
-                                    gpu_id=args.gpu_id,
-                                    n_jobs=args.jobs,
-                                    verbose=args.verbose,
-                                    split_image=args.split_image,
-                                    corr_func=args.corr_func)
+                                       splitter=args.splitter,
+                                       weights=args.weights,
+                                       beta=args.beta,
+                                       seed=args.seed,
+                                       gpu_id=args.gpu_id,
+                                       n_jobs=args.jobs,
+                                       verbose=args.verbose,
+                                       split_image=args.split_image,
+                                       corr_func=args.corr_func,
+                                       fast_mode=args.fast)
         if len(Xs) == 1:
             Xs_split = [Xs_split]
     else:
@@ -166,7 +186,7 @@ if __name__ == '__main__':
 
     if args.eval_time:
         print("Evaluation time only. Skip saving dataset.")
-        sys.exit(0)    # exit without saving
+        sys.exit(0)  # exit without saving
 
     # random shuffle Xs
     if args.verbose:
@@ -179,9 +199,9 @@ if __name__ == '__main__':
         for party_id in range(args.num_parties):
             path = PartyPath(paths[i], args.num_parties, party_id, args.splitter, args.weights, args.beta, args.seed,
                              fmt='pkl', decimal=args.decimal)
-            X = Xparty[party_id]    
+            X = Xparty[party_id]
             y = ys[i]
-            
+
             n_train_samples = int(X.shape[0] * (1 - args.test))
 
             X, y = X[random_indices], y[random_indices]
@@ -190,11 +210,9 @@ if __name__ == '__main__':
             X_train, y_train = X[:n_train_samples], y[:n_train_samples]
             local_train_dataset = LocalDataset(X_train, y_train)
             local_train_dataset.to_pickle(path.train_data)
-            
+
             if args.test != 0:
                 print(f"Saving test party {party_id}: {X.shape} to {path.test_data}")
                 X_test, y_test = X[n_train_samples:], y[n_train_samples:]
                 local_test_dataset = LocalDataset(X_test, y_test)
                 local_test_dataset.to_pickle(path.test_data)
-
-                

@@ -346,7 +346,7 @@ if __name__ == '__main__':
                         help="number of classes. 1 for regression, 2 for binary classification,"
                              ">=3 for multi-class classification")
     parser.add_argument('--metric', '-m', type=str, default='acc',
-                        help="metric to evaluate the model. Supported metrics: [accuracy, rmse]")
+                        help="metric to evaluate the model. Supported metrics: [acc, rmse]")
     parser.add_argument('--seed', '-s', type=int, default=0, help="random seed")
     args = parser.parse_args()
 
