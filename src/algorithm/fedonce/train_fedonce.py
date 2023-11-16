@@ -130,15 +130,24 @@ if __name__ == '__main__':
         path = PartyPath(f"data/syn/{args.dataset}", args.n_parties, 0, args.splitter, args.weights, args.beta,
                          args.seed, fmt='pkl', comm_root="log")
 
+    if args.n_classes == 1:
+        task = 'regression'
+        out_dim = 1
+    elif args.n_classes == 2:
+        task = 'binary_classification'
+        train_dataset.scale_y_()
+        test_dataset.scale_y_()
+        out_dim = 1
+    else:
+        task = 'multi_classification'
+        out_dim = args.n_classes
+
     Xs_train, y_train = train_dataset.Xs, train_dataset.y
     Xs_test, y_test = test_dataset.Xs, test_dataset.y
 
-    if args.n_classes == 1:
-        task = 'regression'
-    elif args.n_classes == 2:
-        task = 'binary_classification'
-    else:
-        task = 'multi_classification'
+    if args.n_classes >= 2:
+        y_train = y_train.astype(np.int64)
+        y_test = y_test.astype(np.int64)
 
     model_name = f"fedonce_{args.dataset}_party_{args.n_parties}_{args.splitter}_w{args.weights:.1f}_seed{args.seed}"
     name = f"{model_name}_active_{0}"
@@ -148,7 +157,7 @@ if __name__ == '__main__':
         active_party_id=0,
         name=model_name,
         num_epochs=100,
-        num_local_rounds=100,
+        num_local_rounds=1,
         local_lr=3e-4,
         local_hidden_layers=[100, 100],
         local_batch_size=128,
@@ -163,7 +172,7 @@ if __name__ == '__main__':
         device=f"cuda:{args.gpu}" if torch.cuda.is_available() else "cpu",
         update_target_freq=1,
         task=task,
-        n_classes=10,
+        n_classes=out_dim,
         test_batch_size=1000,
         test_freq=1,
         cuda_parallel=False,

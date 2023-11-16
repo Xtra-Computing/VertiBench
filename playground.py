@@ -90,15 +90,33 @@ import time
 #
 
 
-a = [1, 1, 1]
-b = [0, 0, 0]
+# random symmetric matrix in [-1, 1]
+U = np.random.uniform(-1, 1, size=(1000, 1000))
+C = (U + U.T) / 2
+for i in range(C.shape[0]):
+    C[i, i] = 1
+pass
 
-print(spearmanr(a, b))
+def pcor(M):
+    return np.std(np.linalg.svd(M)[1], ddof=1) / np.sqrt(M.shape[0])
 
-a_ = a[:]
-a_[0] += 1e-6
-b_ = b[:]
-b_[0] += 1e-6
-print(spearmanr(a_, b_))
+# print(pcor(C))
 
+"""
+0 0 0 1 1 1 1
+0 0 0 1 1 1 1
+0 0 0 1 1 1 1
+1 1 1 0 0 0 0
+1 1 1 0 0 0 0
+1 1 1 0 0 0 0
+1 1 1 0 0 0 0
+"""
+D = np.array([[0, 0, 0, 1, 1, 1, 1],
+                [0, 0, 0, 1, 1, 1, 1],
+                [0, 0, 0, 1, 1, 1, 1],
+                [1, 1, 1, 0, 0, 0, 0],
+                [1, 1, 1, 0, 0, 0, 0],
+                [1, 1, 1, 0, 0, 0, 0],
+                [1, 1, 1, 0, 0, 0, 0]])
+print(np.linalg.eigvals(1-D))
 

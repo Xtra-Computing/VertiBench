@@ -11,7 +11,7 @@ from preprocess.FeatureEvaluator import ImportanceEvaluator, CorrelationEvaluato
 from preprocess.FeatureSplitter import ImportanceSplitter, CorrelationSplitter
 from dataset.VFLDataset import VFLSynAlignedDataset
 
-
+# uniformly sampled alpha and beta
 dataset_alpha = {
     # 46.17 0.22 30.72 0.21 33.17 0.81 0.16 7.26 20.27 3.63
     'covtype': [46.17, 0.22, 30.72, 0.21, 33.17, 0.81, 0.16, 7.26, 20.27, 3.63],

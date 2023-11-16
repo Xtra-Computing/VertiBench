@@ -3,13 +3,13 @@ import torchvision
 import pandas as pd
 
 def get_mnist_data():
-    train = torchvision.datasets.MNIST('./data', train=True, download=True)
-    test = torchvision.datasets.MNIST('./data', train=False, download=True)
+    train = torchvision.datasets.MNIST('./data/syn/mnist', train=True, download=True)
+    test = torchvision.datasets.MNIST('./data/syn/mnist', train=False, download=True)
     return train, test
 
 def get_cifar10_data():
-    train = torchvision.datasets.CIFAR10('./data', train=True, download=True)
-    test = torchvision.datasets.CIFAR10('./data', train=False, download=True)
+    train = torchvision.datasets.CIFAR10('./data/syn/cifar10', train=True, download=True)
+    test = torchvision.datasets.CIFAR10('./data/syn/cifar10', train=False, download=True)
     return train, test
 
 def get_data_as_df(train, test):
@@ -38,8 +38,8 @@ def get_data_as_df(train, test):
     return df_train, df_test
 
 def save_data(df_train, df_test):
-    df_train.to_csv('./data/mnist_train.csv', index=False, header=True, sep=',')
-    df_test.to_csv('./data/mnist_test.csv', index=False, header=True, sep=',')
+    df_train.to_csv('./data/syn/mnist/mnist_train.csv', index=False, header=True, sep=',')
+    df_test.to_csv('./data/syn/mnist/mnist_test.csv', index=False, header=True, sep=',')
 
 train, test = get_mnist_data()
 df_train, df_test = get_data_as_df(train, test)
@@ -70,5 +70,5 @@ cols = df_test.columns.tolist()
 cols = cols[-2:] + cols[:-2]
 df_test = df_test[cols]
 
-df_train.to_csv('./data/cifar10_train.csv', index=False, header=True, sep=',')
-df_test.to_csv('./data/cifar10_test.csv', index=False, header=True, sep=',')
+df_train.to_csv('./data/syn/cifar10/cifar10_train.csv', index=False, header=True, sep=',')
+df_test.to_csv('./data/syn/cifar10/cifar10_test.csv', index=False, header=True, sep=',')
