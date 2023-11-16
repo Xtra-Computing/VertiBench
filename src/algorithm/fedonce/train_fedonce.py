@@ -18,8 +18,10 @@ import matplotlib.pyplot as plt
 import os.path
 import sys
 
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-sys.path.append(os.path.join(os.path.dirname(__file__), '../..'))
+# sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../..'))
+print(sys.path)
 from src.algorithm.fedonce.utils.data_utils import load_data_cross_validation, load_data_train_test
 from src.algorithm.fedonce.model.fl_model import VerticalFLModel
 from src.algorithm.fedonce.model.models import FC
@@ -53,6 +55,13 @@ if __name__ == '__main__':
                         help="metric to evaluate the model. Supported metrics: [acc, rmse]")
     parser.add_argument('--seed', '-s', type=int, default=0, help="random seed")
 
+    parser.add_argument('--epochs', '-e', type=int, default=100)
+    parser.add_argument('--agg_epochs', '-ae', type=int, default=100)
+    parser.add_argument('--local_lr', '-llr', type=float, default=3e-4)
+    parser.add_argument('--agg_lr', '-alr', type=float, default=1e-4)
+    parser.add_argument('--local_batch_size', '-lbs', type=int, default = 128)
+    parser.add_argument('--agg_batch_size', '-abs', type=int, default = 128)
+    
     parser.add_argument('--gpu', '-g', type=int, default=0, help="gpu id")
     args = parser.parse_args()
 
@@ -130,6 +139,7 @@ if __name__ == '__main__':
         path = PartyPath(f"data/syn/{args.dataset}", args.n_parties, 0, args.splitter, args.weights, args.beta,
                          args.seed, fmt='pkl', comm_root="log")
 
+    
     if args.n_classes == 1:
         task = 'regression'
         out_dim = 1
@@ -141,13 +151,13 @@ if __name__ == '__main__':
     else:
         task = 'multi_classification'
         out_dim = args.n_classes
-
+    
     Xs_train, y_train = train_dataset.Xs, train_dataset.y
     Xs_test, y_test = test_dataset.Xs, test_dataset.y
 
     if args.n_classes >= 2:
-        y_train = y_train.astype(np.int64)
-        y_test = y_test.astype(np.int64)
+        y_train = y_train.astype('long')
+        y_test = y_test.astype('long')
 
     model_name = f"fedonce_{args.dataset}_party_{args.n_parties}_{args.splitter}_w{args.weights:.1f}_seed{args.seed}"
     name = f"{model_name}_active_{0}"
@@ -156,17 +166,17 @@ if __name__ == '__main__':
         num_parties=args.n_parties,
         active_party_id=0,
         name=model_name,
-        num_epochs=100,
-        num_local_rounds=1,
-        local_lr=3e-4,
+        num_epochs=args.agg_epochs,
+        num_local_rounds=args.epochs,
+        local_lr=args.local_lr,
         local_hidden_layers=[100, 100],
-        local_batch_size=128,
+        local_batch_size=args.local_batch_size,
         local_weight_decay=1e-5,
         local_output_size=3,
         num_agg_rounds=1,
-        agg_lr=1e-4,
+        agg_lr=args.agg_lr,
         agg_hidden_layers=[200],
-        agg_batch_size=128,
+        agg_batch_size=args.agg_batch_size,
         agg_weight_decay=1e-4,
         writer=writer,
         device=f"cuda:{args.gpu}" if torch.cuda.is_available() else "cpu",
@@ -181,5 +191,9 @@ if __name__ == '__main__':
         optimizer='adam',
         privacy=None
     )
-    acc, _, _, _ = aggregate_model.train(Xs_train, y_train, Xs_test, y_test, use_cache=False)
-    print(f"Final Score: {acc}")
+    acc, _, rmse, _ = aggregate_model.train(Xs_train, y_train, Xs_test, y_test, use_cache=False)
+    
+    if args.n_classes == 1:
+        print(f"Final Score: {rmse}")
+    else:
+        print(f"Final Score: {acc}")
