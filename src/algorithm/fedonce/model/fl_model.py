@@ -658,6 +658,7 @@ class VerticalFLModel:
                 dataset = TensorDataset(X_tensor)
             else:
                 transform_test = transforms.Compose([
+                    transforms.ToPILImage(),
                     transforms.ToTensor(),
                     transforms.Normalize(mean=[0.5, ], std=[0.5, ])
                 ])
@@ -726,6 +727,7 @@ class VerticalFLModel:
         num_instances = Xs[0].shape[0]
         if has_transform:
             transform_test = transforms.Compose([
+                transforms.ToPILImage(),
                 transforms.ToTensor(),
                 transforms.Normalize(mean=[0.5, ], std=[0.5, ])
             ])
