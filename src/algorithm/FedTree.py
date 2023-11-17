@@ -77,6 +77,15 @@ if __name__ == '__main__':
         if args.is_real:
             train_dataset_paths.append(os.path.join(args.root, f"{args.dataset}_party{args.n_parties}-{i}_train.csv"))
             test_dataset_paths.append(os.path.join(args.root, f"{args.dataset}_party{args.n_parties}-{i}_test.csv"))
+        elif args.dataset in ['mnist', 'cifar10']:
+
+            if args.splitter == "corr":
+                value = f"beta{args.beta}"
+            else:
+                value = f"weight{args.weights}"
+
+            train_dataset_paths.append(os.path.join(root_path, f"{args.dataset}_train_party{args.n_parties}-{i}_{args.splitter}_{value}_seed{args.seed}_train.csv"))
+            test_dataset_paths.append(os.path.join(root_path, f"{args.dataset}_test_party{args.n_parties}-{i}_{args.splitter}_{value}_seed{args.seed}_train.csv"))
         else:
             data_path_base = os.path.join(root_path, args.dataset)
             train_dataset_paths.append(PartyPath(data_path_base, n_parties=args.n_parties, party_id=i,

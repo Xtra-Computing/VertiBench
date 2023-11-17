@@ -62,7 +62,7 @@ def get_cvfl_command(
     # weight(imp): 0.1, 1.0, 10.0, 100.0
     # weight(corr): 0.1, 0.3, 0.6, 1.0
     command = (
-        f"cd /data/junyi/cvfl_supplementary/MVCNN_Pytorch && CUDA_VISIBLE_DEVICES={gpu_index} python quant_radar.py 10class/classes/ --num_clients {num_clients} --seed {dataseed} --b {batch_size} "
+        f"cd /home/junyi/VertiBench/src/algorithm/cvfl && CUDA_VISIBLE_DEVICES={gpu_index} python quant_radar.py 10class/classes/ --num_clients {num_clients} --seed {dataseed} --b {batch_size} "
         f"--local_epochs {local_epochs} --epochs {global_epochs} --lr {lr} --quant_level 4 --vecdim 1 --comp topk "
         f"--dataset {dataset} --splitter {splitter} --weight {weight} --dataseed {dataseed} --folder {folder} > "
         f"{folder}/cvfl_{dataset}_c{num_clients}_lr{lr}_ds{dataseed}_le{local_epochs}_ge{global_epochs}_bs{batch_size}_{splitter}_{weight}.log 2>&1"
@@ -142,7 +142,7 @@ def get_gal_command(
 
     control = f"{num_clients}_stack_{local_epochs}_{global_epochs}_search_0"
     
-    command = f"cd /data/junyi/gal/src && CUDA_VISIBLE_DEVICES={gpu_index} BATCH_SIZE={batch_size} LR={lr} python train_model_assist.py --data_name {dataset} --model_name {model} --control_name {control} --init_seed {dataseed} --splitter corr --weight 0.0 --dataseed {dataseed}"
+    command = f"cd /home/junyi/VertiBench/src/algorithm/gal && CUDA_VISIBLE_DEVICES={gpu_index} BATCH_SIZE={batch_size} LR={lr} python train_model_assist.py --data_name {dataset} --model_name {model} --control_name {control} --init_seed {dataseed} --splitter corr --weight 0.0 --dataseed {dataseed}"
     command += f" > {folder}/gal_{dataset}_c{num_clients}_lr{lr}_ds{dataseed}_le{local_epochs}_ge{global_epochs}_bs{batch_size}_{splitter}_{weight}.log 2>&1"
     return command
 

@@ -13,6 +13,10 @@ import torch
 from torch.utils.data import Dataset
 
 from dataset.LocalDataset import LocalDataset
+
+import sys
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
+
 from src.utils import PartyPath
 from preprocess.FeatureEvaluator import CorrelationEvaluator, ImportanceEvaluator
 
