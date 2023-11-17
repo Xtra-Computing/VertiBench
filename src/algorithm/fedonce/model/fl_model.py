@@ -127,8 +127,13 @@ class VerticalFLModel:
             # image classification, X is an ndarray of PIL images
             if self.privacy is None:
                 if self.model_type == 'fc':
-                    X_tensor = torch.from_numpy(X).float()
-                    y_tensor = torch.from_numpy(y).float()  # y will be updated
+                    # check if X is a numpy array
+                    if isinstance(X, np.ndarray):
+                        X_tensor = torch.from_numpy(X).float()
+                        y_tensor = torch.from_numpy(y).float()
+                    else:
+                        X_tensor = X
+                        y_tensor = y  # y will be updated
                     dataset = LocalDataset(X_tensor, y_tensor)
                 else:
                     transform_train = transforms.Compose([
