@@ -188,7 +188,7 @@ if __name__ == '__main__':
         test_freq=1,
         cuda_parallel=False,
         n_channels=1,
-        model_type='fc',
+        model_type=args.model_type,
         optimizer='adam',
         privacy=None
     )
