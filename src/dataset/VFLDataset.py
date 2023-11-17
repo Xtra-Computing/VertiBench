@@ -13,7 +13,7 @@ import torch
 from torch.utils.data import Dataset
 
 from dataset.LocalDataset import LocalDataset
-from utils import PartyPath
+from src.utils import PartyPath
 from preprocess.FeatureEvaluator import CorrelationEvaluator, ImportanceEvaluator
 
 

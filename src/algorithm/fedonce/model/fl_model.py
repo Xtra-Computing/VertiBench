@@ -416,10 +416,11 @@ class VerticalFLModel:
                         assert False
                 elif self.task in ["multi_classification"]:
                     if self.model_type != 'fc':
-                        assert Xs[0].shape[1] == Xs[0].shape[2]
-                        self.image_size = Xs[0].shape[1]
+                        assert Xs[0].shape[2] == Xs[0].shape[3]
+                        self.image_size = Xs[0].shape[2]
                     if self.model_type == 'resnet18':
-                        local_model = ResNet18(image_size=self.image_size, num_classes=self.local_output_dim)
+                        local_model = ResNet18(image_size=self.image_size, num_classes=self.local_output_dim,
+                                               n_channels=self.n_channels)
                     elif self.model_type == 'cnn':
                         if self.privacy is None:
                             local_model = CNN(n_channels=self.n_channels, image_size=Xs[party_id].shape[1],

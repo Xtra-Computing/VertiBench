@@ -9,7 +9,7 @@ import os
 import torch
 from tqdm import tqdm
 from torch.utils.data import Dataset
-from utils.utils import PartyPath
+from src.utils import PartyPath
 from dataset.VFLDataset import VFLAlignedDataset, VFLSynAlignedDataset
 from dataset.LocalDataset import LocalDataset
 
