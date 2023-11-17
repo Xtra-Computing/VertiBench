@@ -50,8 +50,16 @@ class MNISTDataset(VFLSynAlignedDataset):
         assert type in ['train', 'test'], "type should be 'train' or 'test'"
         local_datasets = []
         for party_id in range(n_parties):
-            path_in_dir = PartyPath(dataset_path=dataset, n_parties=n_parties, party_id=party_id,
-                                    splitter=splitter, weight=weight, beta=beta, seed=seed, fmt='pkl').data(type)
+
+            path_in_dir = f"mnist_{type}_party4-{party_id}_{splitter}_"
+
+            if splitter == 'imp':
+                path_in_dir += f"weight{weight}_seed{seed}_train.pkl"
+            elif splitter == 'corr':
+                path_in_dir += f"beta{beta}_seed{seed}_train.pkl"
+                
+            # path_in_dir = PartyPath(dataset_path=dataset, n_parties=n_parties, party_id=party_id,
+                                    # splitter=splitter, weight=weight, beta=beta, seed=seed, fmt='pkl').data(type)
             path = os.path.join(dir, path_in_dir)
             if not os.path.exists(path):
                 raise FileNotFoundError(f"File {path} does not exist")
