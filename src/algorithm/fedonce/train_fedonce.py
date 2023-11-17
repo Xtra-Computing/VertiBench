@@ -63,6 +63,7 @@ if __name__ == '__main__':
     parser.add_argument('--agg_batch_size', '-abs', type=int, default = 128)
     
     parser.add_argument('--gpu', '-g', type=int, default=0, help="gpu id")
+    parser.add_argument('--model_type', '-mt', type=str, default='fc', help="fc or resnet18")
     args = parser.parse_args()
 
     # load data
