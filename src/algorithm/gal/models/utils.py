@@ -39,9 +39,15 @@ def feature_split(input, feature_split):
     if cfg['data_name'] in ['Blob', 'Iris', 'Diabetes', 'BostonHousing', 'Wine', 'BreastCancer', 'QSAR', 'MIMICL',
                             'MIMICM', 
                             
-                            'MSD', 'CovType', 'Higgs', 'Gisette', 'Letter', 'Radar', 'Epsilon', 'Realsim', 'MNIST_VB', 'CIFAR10_VB', 'Wide', 'Vehicle']:
+                            'MSD', 'CovType', 'Higgs', 'Gisette', 'Letter', 'Radar', 'Epsilon', 'Realsim', 'Wide', 'Vehicle']:
         mask = torch.zeros(input.size(-1), device=input.device)
         mask[feature_split] = 1
+        output = torch.masked_fill(input, mask == 0, 0)
+    elif cfg['data_name'] in ['MNIST_VB', 'CIFAR10_VB']:
+        num_features = np.prod(cfg['data_shape']).item()
+        mask = torch.zeros(num_features, device=input.device)
+        mask[feature_split] = 1
+        mask = mask.view(cfg['data_shape'])
         output = torch.masked_fill(input, mask == 0, 0)
     elif cfg['data_name'] in ['MNIST', 'CIFAR10']:
         num_features = np.prod(cfg['data_shape']).item()
