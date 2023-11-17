@@ -65,7 +65,8 @@ if __name__ == '__main__':
     parser.add_argument('--gpu', '-g', type=int, default=0, help="gpu id")
     parser.add_argument('--model_type', '-mt', type=str, default='fc', help="fc or resnet18")
     args = parser.parse_args()
-
+    
+    channel = 1 # default
     # load data
     if args.dataset == 'satellite':
         # global_dataset = SatelliteGlobalDataset("data/real/satellite/clean")
@@ -187,7 +188,7 @@ if __name__ == '__main__':
         test_batch_size=1000,
         test_freq=1,
         cuda_parallel=False,
-        n_channels=1,
+        n_channels=channel,
         model_type=args.model_type,
         optimizer='adam',
         privacy=None
