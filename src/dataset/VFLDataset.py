@@ -2,6 +2,7 @@ import abc
 from typing import Protocol
 import pickle
 import os.path
+import sys
 
 import numpy
 import numpy as np
@@ -11,6 +12,8 @@ from sklearn.preprocessing import MinMaxScaler
 
 import torch
 from torch.utils.data import Dataset
+
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
 from dataset.LocalDataset import LocalDataset
 
