@@ -34,7 +34,8 @@ def split_vertical_data(*X, num_parties=4,
                         n_jobs=1,
                         verbose=False,
                         split_image=False,
-                        fast_mode=False):
+                        fast_mode=False,
+                        image_fill=255):
     """
     Split a dataset into vertical partitions.
 
@@ -66,6 +67,8 @@ def split_vertical_data(*X, num_parties=4,
         whether to split image dataset
     fast_mode: bool
         whether to use fast mode for correlation splitter
+    image_fill: int
+        the value to fill the image background when splitting
 
     Returns
     -------
@@ -94,7 +97,7 @@ def split_vertical_data(*X, num_parties=4,
         # else:
         #     Xs = splitter.fit_splitXs(*X, beta=beta, verbose=verbose, split_image=split_image)
         if fast_mode:
-            Xs = splitter.fit_splitXs(*X, beta=beta, verbose=verbose, split_image=split_image,
+            Xs = splitter.fit_splitXs(*X, beta=beta, verbose=verbose, split_image=split_image, image_fill=image_fill,
                                       n_elites=20, n_offsprings=70, n_mutants=10, n_gen=100, bias=0.7)
         else:
             Xs = splitter.fit_splitXs(*X, beta=beta, verbose=verbose, split_image=split_image)
@@ -136,6 +139,8 @@ if __name__ == '__main__':
                         help="Whether to uniformly split the dataset")
     parser.add_argument('--fast', '-f', default=False, action='store_true',
                         help="Whether to use fast mode for correlation splitter")
+    parser.add_argument('--image-fill', '-if', default=255, type=int,
+                        help="The value to fill the image background when splitting")
     args = parser.parse_args()
 
     if args.jobs > 1:
@@ -168,7 +173,8 @@ if __name__ == '__main__':
                                        verbose=args.verbose,
                                        split_image=args.split_image,
                                        corr_func=args.corr_func,
-                                       fast_mode=args.fast)
+                                       fast_mode=args.fast,
+                                       image_fill=args.image_fill)
         if len(Xs) == 1:
             Xs_split = [Xs_split]
     else:

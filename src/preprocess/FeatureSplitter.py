@@ -417,9 +417,13 @@ class CorrelationSplitter:
         return self.best_feature_per_party
     
     
-    def splitXs(self, *Xs, indices=None, split_image=False, **kwargs):
+    def splitXs(self, *Xs, indices=None, split_image=False, image_fill=255, **kwargs):
         """
         same as self.split
+        :param Xs: [np.ndarray] 2D dataset
+        :param indices: [list] indices of features on each party. If not given, the indices will be generated randomly.
+        :param split_image: [bool] whether to split the image
+        :param image_fill: [int] the value to fill the rest of the image (255 for white, 0 for black)
         """
         ans = []
         if indices is None:
@@ -437,7 +441,7 @@ class CorrelationSplitter:
             for i in range(self.num_parties):
                 selected = party_to_feature[i]
                 if split_image:
-                    line = np.full(X.shape, 255, dtype=np.uint8)
+                    line = np.full(X.shape, image_fill, dtype=np.uint8)
                     line[:, selected] = X[:, selected]
                 else:
                     line = X[:, selected]
