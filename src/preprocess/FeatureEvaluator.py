@@ -126,7 +126,6 @@ class CorrelationEvaluator:
         :param svd_algo: [str] algorithm to use for SVD. Should be one of {'auto', 'approx', 'exact'}
         :param kwargs: [dict] other parameters for mcor_singular
         """
-        assert corr_func in ["spearmanr", "spearmanr_pandas"], "corr_func should be spearmanr or spearmanr_pandas"
 
         self.gamma = gamma
         self.corr = None
@@ -141,14 +140,20 @@ class CorrelationEvaluator:
                 self.corr_func = self.spearmanr     # use CPU for now, a bug in GPU version 
             elif corr_func == "spearmanr_pandas":
                 self.corr_func = self.spearmanr_pandas
+            elif corr_func == "pearson":
+                self.corr_func = self.pearson_gpu
             else:
-                raise NotImplementedError("corr_func should be spearmanr or spearmanr_pandas")
+                raise NotImplementedError("corr_func should be in spearmanr, spearmanr_pandas or pearson")
         else:
             self.device = torch.device("cpu")
             if corr_func == "spearmanr":
                 self.corr_func = self.spearmanr
             elif corr_func == "spearmanr_pandas":
                 self.corr_func = self.spearmanr_pandas
+            elif corr_func == "pearson":
+                self.corr_func = self.pearson
+            else:
+                raise NotImplementedError("corr_func should be in spearmanr, spearmanr_pandas or pearson")
 
         print(f"CorrelationEvaluator uses {self.device}")
         self.mcor_kwargs = kwargs
@@ -196,6 +201,37 @@ class CorrelationEvaluator:
             corr = np.nan_to_num(corr, nan=0)
         if self.gpu_id is not None:
             corr = torch.from_numpy(corr).float().to(self.device)
+        return corr
+
+    def pearson(self, X):
+        """
+        Calculate the correlation matrix of X
+        :param X: [np.ndarray] 2D data matrix. Size: n_samples * n_features
+        :return: [np.ndarray] correlation matrix. Size: n_features * n_features
+        """
+        # When there are constant features in X. The correlation may be NaN, raise a warning "numpy ignore divide by
+        # zero warning". We ignore this warning and replace NaN in corr with 0.
+        with np.errstate(divide='ignore', invalid='ignore'):
+            corr = np.corrcoef(X, rowvar=False)
+        if np.isnan(corr).all():    # in case all features are constant
+            corr = np.zeros((X.shape[1], X.shape[1]))
+        else:
+            corr = np.nan_to_num(corr, nan=0)
+        if self.gpu_id is not None:
+            corr = torch.from_numpy(corr).float().to(self.device)
+        return corr
+
+    def pearson_gpu(self, X):
+        """
+        Calculate the correlation matrix of X
+        :param X: [np.ndarray] 2D data matrix. Size: n_samples * n_features
+        :return: [np.ndarray] correlation matrix. Size: n_features * n_features
+        """
+        # When there are constant features in X. The correlation may be NaN, raise a warning "numpy ignore divide by
+        # zero warning". We ignore this warning and replace NaN in corr with 0.
+        X = torch.from_numpy(X).float().to(self.device)
+        corr = torch.corrcoef(X.T)  # columns are variables
+        corr = torch.nan_to_num(corr, nan=0)
         return corr
 
     @staticmethod

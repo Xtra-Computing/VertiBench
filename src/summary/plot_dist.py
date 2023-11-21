@@ -162,7 +162,7 @@ ax.scatter(aa_random, bb_random, marker="^",
 # labels.insert(5, 'Uniform Data')
 
 # right legend with a little bit lower position
-ax.legend(fontsize=18, loc="center left", # bbox_to_anchor=(1.0, 0.4),
+ax.legend(fontsize=18, loc="lower left", # bbox_to_anchor=(1.0, 0.4),
           handler_map={tuple: HandlerTuple(ndivide=None)}, facecolor='white', framealpha=1.0)
 
 
@@ -171,7 +171,7 @@ ax.legend(fontsize=18, loc="center left", # bbox_to_anchor=(1.0, 0.4),
 ax.tick_params(axis='both', which='major', labelsize=20)
 ax.set_xlabel(r"Party Importance Balance $\alpha$", fontsize=24)
 ax.set_ylabel(r"Inter-party Correlation $\beta$", fontsize=24)
-ax.set_xlim([10**-1.1, 10**2])
+ax.set_xlim([10**-1.1, 10**2.1])
 ax.set_ylim([0, 1])
 # ax.set_yticks([0, 0.3, 0.6, 1])
 # set xaxis as log scale

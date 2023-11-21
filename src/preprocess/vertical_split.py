@@ -130,7 +130,8 @@ if __name__ == '__main__':
     parser.add_argument('--label-column', '-lc', type=int, default=-1,
                         help="the column index of the label. -1 means the last column.")
     parser.add_argument('--corr-func', '-cf', type=str, default='spearmanr',
-                        help="correlation function for the CorrelationSplitter, should be in ['spearmanr', 'spearmanr_pandas']")
+                        help="correlation function for the CorrelationSplitter, should be in"
+                             " ['spearmanr', 'spearmanr_pandas', 'pearson']")
     parser.add_argument('--split-image', '-si', default=False, action='store_true',
                         help="whether to split image dataset")
     parser.add_argument('--shift-y', '-shy', default=0, type=int, help="Shift the y values by a constant")

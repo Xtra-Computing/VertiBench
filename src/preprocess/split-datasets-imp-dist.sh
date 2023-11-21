@@ -2,7 +2,7 @@
 
 gs=( "$@" )
 
-for seed in 0; do
+for seed in 1 2 3 4; do
   fmt=libsvm
   dataset=covtype
   ws=(46.17 0.22 30.72 0.21 33.17 0.81 0.16 7.26 20.27 3.63)
