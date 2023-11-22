@@ -80,7 +80,39 @@ def summary_time(out_dir="out/time/"):
     plt.tight_layout()
     plt.savefig("fig/syn_time_features.png")
 
+def summary_time_party():
+    plt.rcParams.update({'font.size': 16})
+
+    n_instances = 1000
+    n_features = 1000
+    # 2 4 10 25 100 400 800 1000
+    n_parties_list = [2, 4, 10, 25, 100, 400, 800, 1000]
+
+    times = []
+    for n_parties in n_parties_list:
+        path = f"out/time/syn_{n_instances}_{n_features}_{n_parties}.txt"
+        with open(path, 'r') as f:
+            lines = f.readlines()
+            for line in lines:
+                if "Time cost" in line:
+                    time_cost = float(re.findall(r"Time cost: (\d+\.\d+)s", line)[0])
+                    times.append(time_cost)
+                    print(f"{n_instances=}, {n_features=}, {n_parties=}, {time_cost=}")
+                    break
+
+    # plot time cost for different dimensions
+    plt.figure()
+    plt.plot(n_parties_list, times, label='Split time')
+    plt.xscale('log')
+    plt.ylim((1000, 1600))
+    plt.xlabel('Number of parties')
+    plt.ylabel('Time cost (sec)')
+    plt.tight_layout()
+    plt.savefig("fig/syn_time_parties.png")
+
+
 
 if __name__ == '__main__':
     # split_syn_data()
-    summary_time()
+    # summary_time()
+    summary_time_party()
