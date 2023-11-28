@@ -2,16 +2,13 @@ import warnings
 from typing import Iterable
 import time
 
-import deprecated
 import numpy as np
 import pandas as pd
 import torch
 import torch.linalg
 from scipy.stats import spearmanr, hmean, gmean
 from sklearn.utils.extmath import randomized_svd
-from torchmetrics.functional import spearman_corrcoef
 import shap
-from joblib import Parallel, delayed
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 from sklearn.datasets import load_svmlight_file
@@ -90,30 +87,6 @@ class ImportanceEvaluator:
         return importance
 
 
-@deprecated.deprecated(reason="This joblib parallel is much more slower than a single thread")
-def parallel_spearmanr(X):
-    """
-    Calculate the correlation matrix of X in parallel
-    :param X: [np.ndarray] 2D data matrix. Size: n_samples * n_features
-    :return: [np.ndarray] correlation matrix. Size: n_features * n_features
-    """
-
-    # replace all NaN values with 0 (NaN values are caused by constant features, the covariance of which is 0)
-    X = np.nan_to_num(X, nan=0)
-    n_features = X.shape[1]
-    corr = np.zeros((n_features, n_features))
-
-    def spearmanr_ij(i, j):
-        return spearmanr(X[:, i], X[:, j]).statistic
-
-    def spearmanr_i(i):
-        return [spearmanr_ij(i, j) for j in range(n_features)]
-
-    # calculate the correlation matrix in parallel
-    corr = Parallel(n_jobs=-1)(delayed(spearmanr_i)(i) for i in range(n_features))
-    return np.array(corr).reshape(n_features, n_features)
-
-
 class CorrelationEvaluator:
     """
     Correlation evaluator for VFL datasets
@@ -157,20 +130,6 @@ class CorrelationEvaluator:
 
         print(f"CorrelationEvaluator uses {self.device}")
         self.mcor_kwargs = kwargs
-
-    @deprecated.deprecated(reason="use CPU for now, a bug in GPU version ")
-    def spearmanr_gpu(self, X):
-        """
-        Calculate the correlation matrix of X using GPU
-        :param X: [np.ndarray] 2D data matrix. Size: n_samples * n_features
-        :return: [np.ndarray] correlation matrix. Size: n_features * n_features
-        """
-        # When there are constant features in X. The correlation may be NaN, raise a warning "numpy ignore divide by
-        # zero warning". We ignore this warning and replace NaN in corr with 0.
-        X = torch.from_numpy(X).float().to(self.device)
-        corr = spearman_corrcoef(X, X)
-        corr = torch.nan_to_num(corr, nan=0)
-        return corr
 
     def spearmanr_pandas(self, X):
         with np.errstate(divide='ignore', invalid='ignore'):

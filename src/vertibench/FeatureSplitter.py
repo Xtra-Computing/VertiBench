@@ -1,15 +1,9 @@
 from numbers import Real
 import warnings
-import deprecated
-import cachetools
 
 import numpy as np
-import pandas as pd
-from scipy.stats import spearmanr
 import torch
 import torch.linalg
-from torchmetrics.functional import spearman_corrcoef
-
 from pymoo.algorithms.soo.nonconvex.brkga import BRKGA
 from pymoo.core.duplicate import ElementwiseDuplicateElimination
 from pymoo.core.problem import ElementwiseProblem
@@ -450,65 +444,6 @@ class CorrelationSplitter:
             return ans[0]
         else:
             return ans
-
-    # deprecated
-    @deprecated.deprecated(reason="Use splitXs instead")
-    def split(self, X, indices=None, split_image=False, **kwargs):
-        """
-        Use BRKGA to find the best order of features that minimizes the difference between the mean of mcor and the
-        target. split() assumes that the min and max mcor have been calculated by fit().
-        Required parameters:
-        :param X: [np.ndarray] 2D dataset
-
-        Optional parameters: (BRKGA parameters)
-        :param indices: (np.ndarray) precalculated indices of features in the order of importance. If not provided,
-                                    BRKGA will be used to find the best order.
-        :param kwargs: (dict) other parameters for split_indices()
-
-        :return: (np.ndarray) Xs. Split dataset of X
-        """
-        if indices is None:
-            party_to_feature = self.split_indices(X, **kwargs)
-        else:
-            party_to_feature = indices
-
-        # split X according to the permutation order
-        X_split = []
-        for feature_ids in party_to_feature:
-            if split_image:
-                line = np.full(X.shape, 255, dtype=np.uint8)
-                line[:, feature_ids] = X[:, feature_ids]
-                X_split.append(line)
-            else:
-                X_split.append(X[:, feature_ids])
-
-        return tuple(X_split)
-
-    @deprecated.deprecated(reason="Use fit_splitXs instead")
-    def fit_split(self, X, **kwargs):
-        """
-        Calculate the min and max mcor of the overall correlation score. Then use BRKGA to find the best order of
-        features that minimizes the difference between the mean of mcor and the target mcor.
-        Required parameters:
-        :param X: [np.ndarray] 2D dataset
-
-        Optional parameters: (BRKGA parameters)
-        :param n_elites: (int) number of elites in BRKGA
-        :param n_offsprings: (int) number of offsprings in BRKGA
-        :param n_mutants: (int) number of mutants in BRKGA
-        :param n_gen: (int) number of generations in BRKGA
-        :param bias: (float) bias of BRKGA
-        :param seed: (int) seed of BRKGA
-        :param verbose: (bool) whether to print the progress of BRKGA optimization
-        :param beta: [float] the tightness of inner-party correlation. Larger beta means more inner-party correlation
-                                and less inter-party correlation.
-        :param term_tol: (float) If out['F'] < term_tol after term_period generations, the algorithm terminates.
-        :param term_period: (int) Check the termination condition every term_period generations
-
-        :return: (X1, X2, ..., Xn) [np.ndarray, ...] where n is the number of parties
-        """
-        self.fit(X, **kwargs)
-        return self.split(X, **kwargs)
 
     def fit_splitXs(self, *Xs, **kwargs):
         X = np.concatenate(Xs, axis=0)
