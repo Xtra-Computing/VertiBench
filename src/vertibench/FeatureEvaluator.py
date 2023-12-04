@@ -1,6 +1,7 @@
 import warnings
 from typing import Iterable
 import time
+import os
 
 import numpy as np
 import pandas as pd
@@ -12,6 +13,7 @@ import shap
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 from sklearn.datasets import load_svmlight_file
+
 
 class ImportanceEvaluator:
     """
@@ -48,9 +50,17 @@ class ImportanceEvaluator:
         :param kwargs: [dict] other parameters for shap.explainers.Permutation
         :return: [np.ndarray] sum of importance on each party
         """
+        # max_eval is 500 by default in sha.explainers.Permutation explainer
+        # if the number of features is large, we need to increase max_evals
+        if 'max_evals' not in kwargs and 2 * X.shape[1] + 1 > 500:
+            kwargs['max_evals'] = 2 * X.shape[1] + 1
+
         # calculate Shapley values for each feature
         explainer = shap.explainers.Permutation(model, X, **kwargs)
         sample_size = int(self.sample_rate * X.shape[0])
+        if sample_size <= 1:
+            raise ValueError(f"Sample size 0 cannot produce meaningful Shapley values."
+                             f" Please increase the sample rate.")
         X_sample = shap.sample(X, sample_size, random_state=self.seed)
         shap_values = explainer(X_sample).values
 
@@ -69,9 +79,17 @@ class ImportanceEvaluator:
         n_features_on_party = self.check_data(Xs)
         X = np.concatenate(Xs, axis=1)
 
+        # max_eval is 500 by default in sha.explainers.Permutation explainer
+        # if the number of features is large, we need to increase max_evals
+        if 'max_evals' not in kwargs and 2 * X.shape[1] + 1 > 500:
+            kwargs['max_evals'] = 2 * X.shape[1] + 1
+
         # calculate Shapley values for each feature
         explainer = shap.explainers.Permutation(model, X, **kwargs)
         sample_size = int(self.sample_rate * X.shape[0])
+        if sample_size <= 1:
+            raise ValueError(f"Sample size 0 cannot produce meaningful Shapley values."
+                             f" Please increase the sample rate.")
         X_sample = shap.sample(X, sample_size, random_state=self.seed)
         shap_values = explainer(X_sample).values
 
@@ -110,7 +128,7 @@ class CorrelationEvaluator:
             self.device = torch.device(f"cuda:{self.gpu_id}")
             
             if corr_func == "spearmanr":
-                self.corr_func = self.spearmanr     # use CPU for now, a bug in GPU version 
+                self.corr_func = self.spearmanr_pandas     # use CPU for now, a bug in GPU version
             elif corr_func == "spearmanr_pandas":
                 self.corr_func = self.spearmanr_pandas
             elif corr_func == "pearson":
@@ -120,7 +138,7 @@ class CorrelationEvaluator:
         else:
             self.device = torch.device("cpu")
             if corr_func == "spearmanr":
-                self.corr_func = self.spearmanr
+                self.corr_func = self.spearmanr_pandas
             elif corr_func == "spearmanr_pandas":
                 self.corr_func = self.spearmanr_pandas
             elif corr_func == "pearson":
@@ -214,7 +232,7 @@ class CorrelationEvaluator:
 
         # end_time = time.time()
         # print(f"Time for calculating the correlation score: {end_time - start_time}")
-        return score
+        return float(score.item())
 
     @staticmethod
     def mcor_singular_exact(corr):
@@ -228,18 +246,16 @@ class CorrelationEvaluator:
         :param corr:
         :return:
         """
-        # start_time = time.time()
         assert np.isnan(corr).any() == False, "NaN values should be replaced with 0"
-        # EX2 = np.linalg.norm(corr, ord='fro') ** 2 / min(corr.shape)
-        # EX = np.linalg.norm(corr, ord='nuc') / min(corr.shape)
-        # score = np.sqrt(EX2 - EX ** 2)
+
         d = min(corr.shape[0], corr.shape[1])
         vals = np.linalg.svd(corr, compute_uv=False)
-        score = np.std(vals, ddof=1) / np.sqrt(d)
+        if len(vals) <= 1:
+            score = np.array([0])   # less than one feature, we define std as 0
+        else:
+            score = np.std(vals, ddof=1) / np.sqrt(d)
 
-        # end_time = time.time()
-        # print(f"Time for calculating the correlation score: {end_time - start_time}")
-        return score
+        return float(score.item())
 
     def mcor_singular_exact_gpu(self, corr: torch.Tensor):
         """
@@ -252,16 +268,13 @@ class CorrelationEvaluator:
         :param corr:
         :return:
         """
-        # start_time = time.time()
-        # EX2 = torch.norm(corr, p='fro') ** 2 / min(corr.shape)
-        # EX = torch.norm(corr, p='nuc') / min(corr.shape)
-        # score = torch.sqrt(EX2 - EX ** 2)
-
         singular_values = torch.linalg.svdvals(corr)
         d = min(corr.shape)
-        score = torch.std(singular_values) / np.sqrt(d)
-        # end_time = time.time()
-        # print(f"Time for calculating the correlation score: {end_time - start_time}")
+        if len(singular_values) <= 1:
+            score = torch.tensor([0])   # less than one feature, we define std as 0
+        else:
+            score = torch.std(singular_values) / np.sqrt(d)
+
         return float(score.item())
 
     @staticmethod
@@ -290,11 +303,15 @@ class CorrelationEvaluator:
                                  random_state=random_state)
         singular_shape = min(corr.shape)
         s_append_zero = np.concatenate((singular_values, np.zeros(singular_shape - singular_values.shape[0])))
-        score = np.std(s_append_zero, ddof=1) / np.sqrt(singular_shape)
+
+        if len(s_append_zero) <= 1:
+            score = np.array([0])
+        else:
+            score = np.std(s_append_zero, ddof=1) / np.sqrt(singular_shape)
 
         # end_time = time.time()
         # print(f"Time for calculating the correlation score: {end_time - start_time}")
-        return score
+        return float(score.item())
 
     @staticmethod
     def mcor_singular_approx_gpu(corr: torch.Tensor, n_components=400, n_iter=4):
@@ -310,9 +327,7 @@ class CorrelationEvaluator:
         :param n_iter: [int] number of power iterations
         :return: [float] correlation score
         """
-        # start_time = time.time()
 
-        # assert torch.isnan(corr).any() == False, "NaN values should be replaced with 0"
         if n_components > min(corr.shape):
             n_components = min(corr.shape)
 
@@ -320,10 +335,12 @@ class CorrelationEvaluator:
         singular_shape = min(corr.shape)
         s_append_zero = torch.concatenate((singular_values,
                                            torch.zeros(singular_shape - singular_values.shape[0]).to(corr.device)))
-        score = torch.std(s_append_zero) / np.sqrt(singular_shape)
 
-        # end_time = time.time()
-        # print(f"Time for calculating the correlation score: {end_time - start_time}")
+        if len(s_append_zero) <= 1:
+            score = torch.tensor([0])
+        else:
+            score = torch.std(s_append_zero) / np.sqrt(singular_shape)
+
         return float(score.item())
 
     def mcor_singular(self, corr, **kwargs):
@@ -341,6 +358,7 @@ class CorrelationEvaluator:
         """
         # merge kwargs with self.kwargs, and overwrite self.kwargs if there is a conflict
         kwargs = self.mcor_kwargs | kwargs
+        kwargs.pop('method', None)  # remove the unused self.kwargs['method']
 
         if self.svd_algo == 'auto':
             if min(corr.shape) < 100:
@@ -383,10 +401,10 @@ class CorrelationEvaluator:
         mcors = np.zeros((n_parties, n_parties))
         for i in range(n_parties):
             for j in range(n_parties):
-                start_i = corr_cut_points[i]
-                end_i = corr_cut_points[i + 1]
-                start_j = corr_cut_points[j]
-                end_j = corr_cut_points[j + 1]
+                start_i = corr_cut_points[i].item()
+                end_i = corr_cut_points[i + 1].item()
+                start_j = corr_cut_points[j].item()
+                end_j = corr_cut_points[j + 1].item()
 
                 if symmetric and j > i:
                     continue
@@ -418,10 +436,10 @@ class CorrelationEvaluator:
         inter_mcors = []
         for i in range(n_parties):
             for j in range(n_parties):
-                start_i = corr_cut_points[i]
-                end_i = corr_cut_points[i + 1]
-                start_j = corr_cut_points[j]
-                end_j = corr_cut_points[j + 1]
+                start_i = corr_cut_points[i].item()
+                end_i = corr_cut_points[i + 1].item()
+                start_j = corr_cut_points[j].item()
+                end_j = corr_cut_points[j + 1].item()
                 if symmetric:
                     save = i < j
                 else:
@@ -431,7 +449,7 @@ class CorrelationEvaluator:
 
         return np.array(inter_mcors)
 
-    def overall_corr_score(self, corr, n_features_on_party, mcor_func: callable = mcor_singular):
+    def overall_corr_score(self, corr, n_features_on_party):
         """
         Calculate the correlation score of a correlation matrix. This is a three-party example of corr:
         [ v1 v1 .  .  .  .  ]
@@ -445,7 +463,6 @@ class CorrelationEvaluator:
         scores for each party.
         :param corr: [np.ndarray|torch.Tensor] correlation matrix
         :param n_features_on_party: [list] number of features on each party
-        :param mcor_func: [callable] function to calculate the overall correlation score of a correlation matrix
         :return: [float] correlation score
         """
         # inter_mcors = self._get_inter_corr(corr, n_features_on_party, mcor_func)
@@ -482,19 +499,8 @@ class CorrelationEvaluator:
         :param Xs: [List|Tuple] list of feature matrices of each party
         :return: [float] correlation score
         """
-        self.n_features_on_party = self.check_data(Xs)
-        start_time = time.time()
-        Xs = list(Xs)
-        if torch.is_tensor(Xs[0]):
-            self.corr = self.corr_func(torch.cat(Xs, dim=1))
-        elif isinstance(Xs[0], np.ndarray):
-            self.corr = self.corr_func(np.concatenate(Xs, axis=1))
-        else:
-            raise ValueError(f"Xs should be either np.ndarray or torch.Tensor, but got {type(Xs[0])}")
-        self.corr = torch.nan_to_num(self.corr, nan=0)
-        end_time = time.time()
-        print(f"Correlation calculation time: {end_time - start_time:.2f}s")
-        return self.overall_corr_score(self.corr, self.n_features_on_party)
+        self.fit(Xs)
+        return self.evaluate()
 
     def fit(self, Xs):
         """
@@ -502,19 +508,35 @@ class CorrelationEvaluator:
         :param Xs: [List|Tuple] list of feature matrices of each party
         """
         self.n_features_on_party = self.check_data(Xs)
-        self.corr = self.corr_func(np.concatenate(Xs, axis=1))
-        self.corr = torch.nan_to_num(self.corr, nan=0)
+        if Xs[0].shape[0] <= 1:
+            raise ValueError("The number of samples should be greater than 1")
+        Xs = list(Xs)
+        if torch.is_tensor(Xs[0]):
+            self.corr = self.corr_func(torch.cat(Xs, dim=1))
+        elif isinstance(Xs[0], np.ndarray):
+            self.corr = self.corr_func(np.concatenate(Xs, axis=1))
 
-    def evaluate(self):
+        else:
+            raise ValueError(f"Xs should be either np.ndarray or torch.Tensor, but got {type(Xs[0])}")
+
+        if torch.is_tensor(self.corr):
+            self.corr = torch.nan_to_num(self.corr, nan=0)
+        else:
+            self.corr = np.nan_to_num(self.corr, nan=0)
+
+    def evaluate(self, Xs=None):
         """
         Evaluate the correlation score of a vertical federated learning dataset with self.corr.
         :return: [float] correlation score
         """
+        if Xs is not None:
+            # If Xs is provided, update self.n_features_on_party
+            self.n_features_on_party = self.check_data(Xs)
         return self.overall_corr_score(self.corr, self.n_features_on_party)
 
     def visualize(self, save_path=None, value=None, cmap='cividis', map_func=np.abs, fontsize=16, title_size=None):
         """
-        Visualize the correlation matrix.
+        Visualize the correlation matrix with the latest self.n_features_on_party and self.corr.
         :param map_func: [callable|None|str] function to map the correlation matrix. If None, the correlation matrix will
         be used directly.
         :param cmap: [str] color map for the figure
@@ -522,6 +544,9 @@ class CorrelationEvaluator:
         :param value: [float|None] The overall correlation score to be shown on the figure. If None, the score will not
         be shown.
         """
+        if save_path and not os.path.exists(os.path.dirname(save_path)):
+            os.makedirs(os.path.dirname(save_path))
+
         if self.corr is None:
             raise ValueError("Please call fit() or fit_evaluate() first to calculate the correlation matrix.")
         if type(self.corr) == torch.Tensor:
@@ -573,12 +598,12 @@ class CorrelationEvaluator:
             plt.axvline(x=xtick_major[i + 1] - 0.5, color='red', linewidth=2)
             plt.axhline(y=xtick_major[i + 1] - 0.5, color='red', linewidth=2)
 
-        ax.set_xticks(xtick_major, minor=False)
-        ax.set_yticks(xtick_major, minor=False)
-        ax.set_xticklabels(xtick_labels, minor=True)
-        ax.set_yticklabels(xtick_labels, minor=True)
+        ax.xaxis.set_major_locator(ticker.FixedLocator(xtick_major))
+        ax.yaxis.set_major_locator(ticker.FixedLocator(xtick_major))
         ax.xaxis.set_minor_locator(ticker.FixedLocator(xtick_minor))
         ax.yaxis.set_minor_locator(ticker.FixedLocator(xtick_minor))
+        ax.set_xticklabels(xtick_labels, minor=True)
+        ax.set_yticklabels(xtick_labels, minor=True)
         ax.tick_params(axis='both', which='minor', length=0)
         ax.tick_params(axis='x', which='minor', rotation=90)
         ax.tick_params(axis='x', which='major', rotation=90)
@@ -594,6 +619,7 @@ class CorrelationEvaluator:
             plt.show()
         else:
             plt.savefig(save_path)
+        plt.close()
 
 
 if __name__ == '__main__':
