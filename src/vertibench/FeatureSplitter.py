@@ -1,5 +1,6 @@
 from numbers import Real
 import warnings
+import math
 
 import numpy as np
 import torch
@@ -40,7 +41,27 @@ class ImportanceSplitter:
         """
         Check if the parameters are valid
         """
-        assert len(self.weights) == self.num_parties, "The length of weights should equal to the number of parties"
+        if len(self.weights) != self.num_parties:
+            raise ValueError("The length of weights should equal to the number of parties")
+        if not all([weight > 0 for weight in self.weights]):
+            raise ValueError("The weights should be positive")
+        if self.num_parties < 2:
+            raise ValueError("The number of parties should be greater than 1")
+
+    @staticmethod
+    def dirichlet(alpha):
+        """
+        Generate a random sample from a Dirichlet distribution using beta distribution. This function can
+        work with small alpha values.
+        :param alpha: [float] the parameter of the symmetric Dirichlet distribution
+        :return: [np.ndarray] the generated sample
+        """
+        xs = [np.random.beta(alpha[0], sum(alpha[1:]))]
+        for i in range(1, len(alpha) - 1):
+            phi = np.random.beta(alpha[i], sum(alpha[i + 1:]))
+            xs.append((1 - sum(xs)) * phi)
+        xs.append(1 - sum(xs))
+        return np.array(xs)
 
     def split_indices(self, X, allow_empty_party=False):
         """
@@ -51,7 +72,17 @@ class ImportanceSplitter:
         """
         # Generate the probabilities of being assigned to each party
         # All the features share the same ratio
-        probs = np.random.dirichlet(self.weights)
+        # probs = np.random.dirichlet(self.weights)     # has bug with small weights
+        # if np.isnan(probs).any():
+        #     probs = self.dirichlet(self.weights)      # use beta distribution instead, slower but more accurate
+        probs = self.dirichlet(self.weights)
+
+        if np.sum(probs) < 1 - 1e-6:
+            # very small weights may cause all probs to be 0
+            # in this case, assign all features to a random party
+            assert np.isclose(sum(probs), 0)
+            target_party = np.random.randint(self.num_parties)
+            probs[target_party] = 1
 
         if allow_empty_party:
             # Assign each feature to a party
@@ -67,6 +98,8 @@ class ImportanceSplitter:
 
             # Assign the remaining features to the parties
             preassigned_feature_id_set = set(preassigned_feature_ids)
+            if not np.isclose(sum(probs), 1):
+                raise ValueError(f"The sum of probs should be equal to 1, got {probs} from weights {self.weights}")
             party_ids = np.random.choice(self.num_parties, size=X.shape[1], p=probs)
             for feature_id in range(X.shape[1]):
                 if feature_id not in preassigned_feature_id_set:
@@ -81,7 +114,7 @@ class ImportanceSplitter:
 
         return party_to_feature
     
-    def splitXs(self, *Xs, indices=None, allow_empty_party=False, split_image=False):
+    def splitXs(self, *Xs, indices=None, allow_empty_party=False, split_image=False, fill_value=255):
         assert len(Xs) > 0, "At least one dataset should be given"
         ans = []
         
@@ -98,8 +131,7 @@ class ImportanceSplitter:
             for i in range(self.num_parties):
                 selected = party_to_feature[i] # selected column_ids
                 if split_image:
-                    # select the corresponding columns, filling the rest with 255 (white)
-                    line = np.full(X.shape, 255, dtype=np.uint8)
+                    line = np.full(X.shape, fill_value, dtype=np.uint8)
                     line[:, selected] = X[:, selected]
                 else:
                     line = X[:, selected]
@@ -109,6 +141,7 @@ class ImportanceSplitter:
             return ans[0]
         else:
             return ans
+
     def split(self, X, *args, indices=None, allow_empty_party=False, split_image=False):
         """
         Split X by feature importance.
@@ -408,8 +441,7 @@ class CorrelationSplitter:
             self.best_feature_per_party.append(np.sort(self.best_permutation[start:end]))
         assert (np.sort(np.concatenate(self.best_feature_per_party)) == np.arange(X.shape[1])).all()
         return self.best_feature_per_party
-    
-    
+
     def splitXs(self, *Xs, indices=None, split_image=False, image_fill=255, **kwargs):
         """
         same as self.split
@@ -477,6 +509,7 @@ class CorrelationSplitter:
         score_var = np.var(scores)
         est_alpha = (self.num_parties - 1 - self.num_parties ** 2 * score_var) / (self.num_parties ** 3 * score_var)
         return est_alpha
+
 
 class SimpleSplitter:
     def __init__(self, num_parties):
