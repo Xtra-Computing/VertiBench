@@ -102,6 +102,8 @@ class TestImportanceSplitter(unittest.TestCase):
                         split_indices = splitter.split_indices(X, allow_empty_party=False)
                         self.assertEqual(len(split_indices), splitter.num_parties)
                         self.assertEqual(sum([len(indices) for indices in split_indices]), X.shape[1])
+                        for indices in split_indices:
+                            self.assertGreater(len(indices), 0) # no empty party
                         importance_per_party = []
                         for party_id, indices in enumerate(split_indices):
                             score = np.sum(feature_importances[indices])
@@ -140,6 +142,100 @@ class TestImportanceSplitter(unittest.TestCase):
                     cor2 = spearmanr(order0, order2)[0]
                     self.assertGreater(cor1, 0.6, msg=f"key={key}, cor1={cor1}, cor2={cor2}")
                     self.assertGreater(cor2, 0.6, msg=f"key={key}, cor1={cor1}, cor2={cor2}")
+
+    def test_split_tabular(self):
+        # assuming that the split_indices function is correct
+
+        # test with/without given indices
+        for key, (X, y) in self.data_dict.items():
+            if X.shape[1] < 10:
+                continue
+            with self.subTest(task="tabular", key=key):
+                splitter1 = ImportanceSplitter(10, seed=0)
+                split_indices = splitter1.split_indices(X, allow_empty_party=False)
+                Xs1 = splitter1.split(X, indices=split_indices)
+                splitter2 = ImportanceSplitter(10, seed=0)
+                Xs2 = splitter2.split(X)
+                self.assertEqual(len(Xs1), 10)
+                self.assertEqual(len(Xs2), 10)
+                for i in range(10):
+                    self.assertTrue(np.allclose(Xs1[i], Xs2[i]))
+
+    def test_split_tabular_fill(self):
+        # assuming that the split_indices function is correct
+
+        # test with/without given indices
+        for key, (X, y) in self.data_dict.items():
+            if X.shape[1] < 10:
+                continue
+            with self.subTest(task="fill", key=key):
+                splitter1 = ImportanceSplitter(10, seed=0)
+                split_indices = splitter1.split_indices(X)
+                Xs1 = splitter1.split(X, indices=split_indices, fill=-1)
+                splitter2 = ImportanceSplitter(10, seed=0)
+                Xs2 = splitter2.split(X, fill=-1)
+                self.assertEqual(len(Xs1), 10)
+                self.assertEqual(len(Xs2), 10)
+                for i in range(10):
+                    self.assertTrue(np.allclose(Xs1[i], Xs2[i]))
+
+                # check if the fill value is correct
+                for i in range(X.shape[0]):
+                    for X1 in Xs1:
+                        fill_cnt = np.count_nonzero(X1[i] == -1)
+                        self.assertLessEqual(fill_cnt, X.shape[1] * (10 - 1))
+
+    def test_split_multi_tabular(self):
+        # assuming that the split_indices function is correct
+
+        # test with/without given indices
+        X_list = []
+        for key, (X, y) in self.data_dict.items():
+            if X.shape[1] != 10:
+                continue
+            X_list.append(X)
+
+        with self.subTest(task="multi_tabular"):
+            splitter = ImportanceSplitter(10, seed=0)
+            Xs = splitter.split(*X_list)
+            self.assertEqual(len(Xs), len(X_list))
+            for i in range(len(X_list)):
+                self.assertEqual(len(Xs[i]), 10)
+
+            # concat all the parties should be the same as the original data
+            X_all = np.concatenate(X_list, axis=0)
+            Xs_all = []
+            for i in range(len(X_list)):
+                Xs_all.append(np.concatenate([Xs[i][j] for j in range(10)], axis=1))
+            X_all_split = np.concatenate(Xs_all, axis=0)
+            self.assertTrue(np.allclose(np.sort(X_all), np.sort(X_all_split)))
+
+    def test_split_multi_tabular_fill(self):
+        # assuming that the split_indices function is correct
+
+        # test with/without given indices
+        X_list = []
+        for key, (X, y) in self.data_dict.items():
+            if X.shape[1] != 10:
+                continue
+            X_list.append(X)
+
+        with self.subTest(task="multi_tabular_fill"):
+            splitter = ImportanceSplitter(10, seed=0)
+            Xs = splitter.split(*X_list, fill=-1)
+            self.assertEqual(len(Xs), len(X_list))
+            for i in range(len(X_list)):
+                self.assertEqual(len(Xs[i]), 10)
+
+            # concat all the parties should be the same as the original data
+            X_all = np.concatenate(X_list, axis=0)
+            Xs_all = []
+            for i in range(len(X_list)):
+                Xs_all.append(np.concatenate([Xs[i][j] for j in range(10)], axis=1))
+            X_all_split = np.concatenate(Xs_all, axis=0)
+            self.assertEqual(X_all_split.shape[1], X_all.shape[1] * 10)
+            X_all_split_filled = X_all_split[X_all_split != -1].reshape(X_all.shape)
+            self.assertTrue(np.allclose(np.sort(X_all), np.sort(X_all_split_filled)))
 
 
 

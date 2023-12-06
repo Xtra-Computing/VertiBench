@@ -114,73 +114,34 @@ class ImportanceSplitter:
 
         return party_to_feature
     
-    def splitXs(self, *Xs, indices=None, allow_empty_party=False, split_image=False, fill_value=255):
+    def split(self, *Xs, indices=None, allow_empty_party=False, fill=None):
         assert len(Xs) > 0, "At least one dataset should be given"
         ans = []
-        
+
         # calculate the indices for each party for all datasets
         if indices is None:
             allX = np.concatenate(Xs, axis=0)
             party_to_feature = self.split_indices(allX, allow_empty_party=allow_empty_party)
         else:
             party_to_feature = indices
-        
+
         # split each dataset
         for X in Xs:
-            Xparties = []
+            X_split = []
             for i in range(self.num_parties):
-                selected = party_to_feature[i] # selected column_ids
-                if split_image:
-                    line = np.full(X.shape, fill_value, dtype=np.uint8)
-                    line[:, selected] = X[:, selected]
+                selected = party_to_feature[i]  # selected column_ids
+                if fill is not None:
+                    X_party_i = np.full_like(X, fill)
+                    X_party_i[:, selected] = X[:, selected]
                 else:
-                    line = X[:, selected]
-                Xparties.append(line)
-            ans.append(Xparties)
+                    X_party_i = X[:, selected]
+                X_split.append(X_party_i)
+            ans.append(X_split)
+
         if len(ans) == 1:
             return ans[0]
         else:
             return ans
-
-    def split(self, X, *args, indices=None, allow_empty_party=False, split_image=False):
-        """
-        Split X by feature importance.
-        :param allow_empty_party: [bool] whether to allow parties with zero features
-        :param X: [np.ndarray] 2D dataset
-        :param args: [np.ndarray] other datasets with the same number of columns as X (X1, X2, ..., Xn)
-        :param indices: [list] indices of features on each party. If not given, the indices will be generated randomly.
-        :return: (X1, X2, ..., Xn) [np.ndarray, ...] where n is the number of parties
-        """
-        if indices is None:
-            party_to_feature = self.split_indices(X, allow_empty_party=allow_empty_party)
-        else:
-            party_to_feature = indices
-
-        # Split the dataset according to party_to_feature
-        Xs = []
-        for party_id in range(self.num_parties):
-            selected = party_to_feature[party_id] # selected feature ids
-            if split_image:
-                # select the corresponding columns, filling the rest with 255 (white)
-                line = np.full(X.shape, 255, dtype=np.uint8)
-                line[:, selected] = X[:, selected]
-                Xs.append(line)
-            else:
-                Xs.append(X[:, selected])
-
-        # Split the other datasets
-        other_Xs_list = []
-        for other_X in args:
-            assert other_X.shape[1] == X.shape[1], "The number of columns of other datasets should be the same as X"
-            other_Xs = []
-            for party_id in range(self.num_parties):
-                other_Xs.append(other_X[:, party_to_feature[party_id]])
-            other_Xs_list.append(other_Xs)
-
-        if len(other_Xs_list) == 0:
-            return tuple(Xs)
-        else:
-            return tuple(Xs), *tuple(other_Xs_list)
 
 
 class CorrelationSplitter:
@@ -442,7 +403,7 @@ class CorrelationSplitter:
         assert (np.sort(np.concatenate(self.best_feature_per_party)) == np.arange(X.shape[1])).all()
         return self.best_feature_per_party
 
-    def splitXs(self, *Xs, indices=None, split_image=False, image_fill=255, **kwargs):
+    def split(self, *Xs, indices=None, split_image=False, image_fill=255, **kwargs):
         """
         same as self.split
         :param Xs: [np.ndarray] 2D dataset
@@ -477,7 +438,7 @@ class CorrelationSplitter:
         else:
             return ans
 
-    def fit_splitXs(self, *Xs, **kwargs):
+    def fit_split(self, *Xs, **kwargs):
         X = np.concatenate(Xs, axis=0)
         self.fit(X, **kwargs)
         return self.splitXs(*Xs, **kwargs)
