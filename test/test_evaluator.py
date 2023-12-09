@@ -5,7 +5,7 @@ import numpy as np
 import xgboost as xgb
 from sklearn.datasets import make_classification
 
-from src.vertibench.FeatureEvaluator import ImportanceEvaluator, CorrelationEvaluator
+from src.vertibench.Evaluator import ImportanceEvaluator, CorrelationEvaluator
 
 
 def generate_data():

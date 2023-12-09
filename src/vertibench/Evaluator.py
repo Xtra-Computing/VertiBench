@@ -13,12 +13,20 @@ import shap
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 from sklearn.datasets import load_svmlight_file
+from pymoo.algorithms.soo.nonconvex.brkga import BRKGA
+from pymoo.core.duplicate import ElementwiseDuplicateElimination
+from pymoo.core.problem import ElementwiseProblem
+from pymoo.optimize import minimize
+from pymoo.termination.default import DefaultSingleObjectiveTermination
+from pymoo.core.problem import StarmapParallelization
+from multiprocessing.pool import ThreadPool
 
 
 class ImportanceEvaluator:
     """
     Importance evaluator for VFL datasets
     """
+
     def __init__(self, sample_rate=0.01, seed=0):
         """
         :param sample_rate: [float] sample rate of the dataset to calculate Shaplley values
@@ -104,31 +112,43 @@ class ImportanceEvaluator:
             "The length of importance should be the same as the number of parties"
         return importance
 
+    def evaluate_alpha(self, Xs=None, model: callable=None, scores=None, **kwargs):
+        if scores is None:
+            if Xs is None or model is None:
+                raise ValueError(f"Since {scores=}, either scores or Xs and model should be provided to get scores.")
+            scores = self.evaluate(Xs, model, **kwargs)
+        num_parties = len(scores)
+        scores = scores / np.sum(scores)  # normalize the scores
+        score_var = np.var(scores)
+        est_alpha = (num_parties - 1 - num_parties ** 2 * score_var) / (num_parties ** 3 * score_var)
+        return est_alpha
+
 
 class CorrelationEvaluator:
     """
     Correlation evaluator for VFL datasets
     """
-    def __init__(self, corr_func='spearmanr', gamma=1.0, gpu_id=None, svd_algo='auto', **kwargs):
+
+    def __init__(self, corr_func='spearmanr', gpu_id=None, svd_algo='auto', n_jobs=1, **kwargs):
         """
         :param corr_func: [str] function to calculate the correlation between two features
         :param gamma: [float] weight of the inner-party correlation score
         :param gpu_id: [int] GPU id to use. If None, use CPU
         :param svd_algo: [str] algorithm to use for SVD. Should be one of {'auto', 'approx', 'exact'}
-        :param kwargs: [dict] other parameters for mcor_singular
+        :param kwargs: [dict] other parameters for pcor_singular
         """
 
-        self.gamma = gamma
         self.corr = None
         self.n_features_on_party = None
         self.gpu_id = gpu_id
         self.svd_algo = svd_algo
+
         assert self.svd_algo in ['auto', 'approx', 'exact'], "svd_algo should be auto, approx or exact"
         if self.gpu_id is not None:
             self.device = torch.device(f"cuda:{self.gpu_id}")
-            
+
             if corr_func == "spearmanr":
-                self.corr_func = self.spearmanr_pandas     # use CPU for now, a bug in GPU version
+                self.corr_func = self.spearmanr_pandas  # use CPU for now, a bug in GPU version
             elif corr_func == "spearmanr_pandas":
                 self.corr_func = self.spearmanr_pandas
             elif corr_func == "pearson":
@@ -147,20 +167,27 @@ class CorrelationEvaluator:
                 raise NotImplementedError("corr_func should be in spearmanr, spearmanr_pandas or pearson")
 
         print(f"CorrelationEvaluator uses {self.device}")
-        self.mcor_kwargs = kwargs
+        self.pcor_kwargs = kwargs
+
+        # parallel evaluator
+        self.pool = ThreadPool(n_jobs)
+        self.runner = StarmapParallelization(self.pool.starmap)
+
+        self.min_icor = None
+        self.max_icor = None
 
     def spearmanr_pandas(self, X):
         with np.errstate(divide='ignore', invalid='ignore'):
             corr = pd.DataFrame(X).corr(method='spearman').values
             # corr = spearmanr(X).correlation <=== BUG: this cannot calculate the correlation of constant features
-        if np.isnan(corr).all():    # in case all features are constant
+        if np.isnan(corr).all():  # in case all features are constant
             corr = np.zeros((X.shape[1], X.shape[1]))
         else:
             corr = np.nan_to_num(corr, nan=0)
         if self.gpu_id is not None:
             corr = torch.from_numpy(corr).float().to(self.device)
         return corr
-    
+
     def spearmanr(self, X):
         """
         Calculate the correlation matrix of X
@@ -170,10 +197,9 @@ class CorrelationEvaluator:
         # When there are constant features in X. The correlation may be NaN, raise a warning "numpy ignore divide by
         # zero warning". We ignore this warning and replace NaN in corr with 0.
         with np.errstate(divide='ignore', invalid='ignore'):
-            corr = spearmanr(X).correlation # <=== BUG: this cannot calculate the correlation of constant features
-        if np.isnan(corr).all():    # in case all features are constant
+            corr = spearmanr(X).correlation  # <=== BUG: this cannot calculate the correlation of constant features
+        if np.isnan(corr).all():  # in case all features are constant
             raise ValueError("All features are constant, scipy have a BUG that cannot calculate the correlation.")
-            corr = np.zeros((X.shape[1], X.shape[1]))
         else:
             corr = np.nan_to_num(corr, nan=0)
         if self.gpu_id is not None:
@@ -190,7 +216,7 @@ class CorrelationEvaluator:
         # zero warning". We ignore this warning and replace NaN in corr with 0.
         with np.errstate(divide='ignore', invalid='ignore'):
             corr = np.corrcoef(X, rowvar=False)
-        if np.isnan(corr).all():    # in case all features are constant
+        if np.isnan(corr).all():  # in case all features are constant
             corr = np.zeros((X.shape[1], X.shape[1]))
         else:
             corr = np.nan_to_num(corr, nan=0)
@@ -212,11 +238,11 @@ class CorrelationEvaluator:
         return corr
 
     @staticmethod
-    def mcor_singular_naive(corr):
+    def pcor_singular_naive(corr):
         """
         Calculate the overall correlation score of a correlation matrix using the variance of singular values.
         This is a naive implementation of the method that calculates all singular values. This is usually 2 to
-        3 times slower than mcor_singular_exact().
+        3 times slower than pcor_singular_exact().
         This is an example of corr
         [ v1 v1 ]
         [ v1 v1 ]
@@ -235,7 +261,7 @@ class CorrelationEvaluator:
         return float(score.item())
 
     @staticmethod
-    def mcor_singular_exact(corr):
+    def pcor_singular_exact(corr):
         """
         [Exact] Calculate the overall correlation score of a correlation matrix using the variance of singular values.
         Using the definition of std: std = sqrt(E[X^2] - E[X]^2). E[X^2] can be calculated by trace(X^TX), which is
@@ -251,13 +277,13 @@ class CorrelationEvaluator:
         d = min(corr.shape[0], corr.shape[1])
         vals = np.linalg.svd(corr, compute_uv=False)
         if len(vals) <= 1:
-            score = np.array([0])   # less than one feature, we define std as 0
+            score = np.array([0])  # less than one feature, we define std as 0
         else:
             score = np.std(vals, ddof=1) / np.sqrt(d)
 
         return float(score.item())
 
-    def mcor_singular_exact_gpu(self, corr: torch.Tensor):
+    def pcor_singular_exact_gpu(self, corr: torch.Tensor):
         """
         [Exact] Calculate the overall correlation score of a correlation matrix using the variance of singular values.
         Using the definition of std: std = sqrt(E[X^2] - E[X]^2). E[X^2] can be calculated by trace(X^TX), which is
@@ -271,14 +297,14 @@ class CorrelationEvaluator:
         singular_values = torch.linalg.svdvals(corr)
         d = min(corr.shape)
         if len(singular_values) <= 1:
-            score = torch.tensor([0])   # less than one feature, we define std as 0
+            score = torch.tensor([0])  # less than one feature, we define std as 0
         else:
             score = torch.std(singular_values) / np.sqrt(d)
 
         return float(score.item())
 
     @staticmethod
-    def mcor_singular_approx(corr, n_components=400, n_oversamples=10, n_iter=4, random_state=0):
+    def pcor_singular_approx(corr, n_components=400, n_oversamples=10, n_iter=4, random_state=0):
         """
         [Approximate] Calculate the overall correlation score of a correlation matrix using the variance of singular
         values. This function uses randomized SVD to approximate the singular values. It is much faster than the exact
@@ -299,8 +325,9 @@ class CorrelationEvaluator:
             n_components = min(corr.shape)
 
         assert np.isnan(corr).any() == False, "NaN values should be replaced with 0"
-        _, singular_values, _ = randomized_svd(corr, n_components=n_components, n_oversamples=n_oversamples, n_iter=n_iter,
-                                 random_state=random_state)
+        _, singular_values, _ = randomized_svd(corr, n_components=n_components, n_oversamples=n_oversamples,
+                                               n_iter=n_iter,
+                                               random_state=random_state)
         singular_shape = min(corr.shape)
         s_append_zero = np.concatenate((singular_values, np.zeros(singular_shape - singular_values.shape[0])))
 
@@ -314,7 +341,7 @@ class CorrelationEvaluator:
         return float(score.item())
 
     @staticmethod
-    def mcor_singular_approx_gpu(corr: torch.Tensor, n_components=400, n_iter=4):
+    def pcor_singular_approx_gpu(corr: torch.Tensor, n_components=400, n_iter=4):
         """
         [Approximate] Calculate the overall correlation score of a correlation matrix using the variance of singular
         values. This function uses randomized SVD to approximate the singular values. It invokes torch.svd_lowrank() to
@@ -343,7 +370,7 @@ class CorrelationEvaluator:
 
         return float(score.item())
 
-    def mcor_singular(self, corr, **kwargs):
+    def pcor_singular(self, corr, **kwargs):
         """
         Calculat the std of the singular values of corr matrix.
         :param corr: [np.ndarray] correlation matrix
@@ -357,30 +384,30 @@ class CorrelationEvaluator:
         :return:
         """
         # merge kwargs with self.kwargs, and overwrite self.kwargs if there is a conflict
-        kwargs = self.mcor_kwargs | kwargs
+        kwargs = self.pcor_kwargs | kwargs
         kwargs.pop('method', None)  # remove the unused self.kwargs['method']
 
         if self.svd_algo == 'auto':
             if min(corr.shape) < 100:
                 if self.gpu_id is not None:
-                    return self.mcor_singular_exact_gpu(corr)
+                    return self.pcor_singular_exact_gpu(corr)
                 else:
-                    return CorrelationEvaluator.mcor_singular_exact(corr)
+                    return CorrelationEvaluator.pcor_singular_exact(corr)
             else:
                 if self.gpu_id is not None:
-                    return self.mcor_singular_approx_gpu(corr, **kwargs)
+                    return self.pcor_singular_approx_gpu(corr, **kwargs)
                 else:
-                    return CorrelationEvaluator.mcor_singular_approx(corr, **kwargs)
+                    return CorrelationEvaluator.pcor_singular_approx(corr, **kwargs)
         elif self.svd_algo == 'exact':
             if self.gpu_id is not None:
-                return self.mcor_singular_exact_gpu(corr)
+                return self.pcor_singular_exact_gpu(corr)
             else:
-                return CorrelationEvaluator.mcor_singular_exact(corr)
+                return CorrelationEvaluator.pcor_singular_exact(corr)
         elif self.svd_algo == 'approx':
             if self.gpu_id is not None:
-                return self.mcor_singular_approx_gpu(corr, **kwargs)
+                return self.pcor_singular_approx_gpu(corr, **kwargs)
             else:
-                return CorrelationEvaluator.mcor_singular_approx(corr, **kwargs)
+                return CorrelationEvaluator.pcor_singular_approx(corr, **kwargs)
         else:
             raise ValueError(f"Unknown algorithm: {self.svd_algo}")
 
@@ -398,7 +425,7 @@ class CorrelationEvaluator:
         corr_cut_points = np.cumsum(n_features_on_party)
         corr_cut_points = np.insert(corr_cut_points, 0, 0)
 
-        mcors = np.zeros((n_parties, n_parties))
+        pcors = np.zeros((n_parties, n_parties))
         for i in range(n_parties):
             for j in range(n_parties):
                 start_i = corr_cut_points[i].item()
@@ -409,13 +436,13 @@ class CorrelationEvaluator:
                 if symmetric and j > i:
                     continue
 
-                mcors[i][j] = self.mcor_singular(corr[start_i:end_i, start_j:end_j])
+                pcors[i][j] = self.pcor_singular(corr[start_i:end_i, start_j:end_j])
 
         if symmetric:
             for i in range(n_parties):
                 for j in range(i + 1, n_parties):
-                    mcors[i][j] = mcors[j][i]
-        return mcors
+                    pcors[i][j] = pcors[j][i]
+        return pcors
 
     def _get_inter_corr(self, corr, n_features_on_party, symmetric=True):
         """
@@ -433,7 +460,7 @@ class CorrelationEvaluator:
         corr_cut_points = np.cumsum(n_features_on_party)
         corr_cut_points = np.insert(corr_cut_points, 0, 0)
 
-        inter_mcors = []
+        inter_pcors = []
         for i in range(n_parties):
             for j in range(n_parties):
                 start_i = corr_cut_points[i].item()
@@ -445,9 +472,9 @@ class CorrelationEvaluator:
                 else:
                     save = i != j
                 if save:
-                    inter_mcors.append(self.mcor_singular(corr[start_i:end_i, start_j:end_j]))
+                    inter_pcors.append(self.pcor_singular(corr[start_i:end_i, start_j:end_j]))
 
-        return np.array(inter_mcors)
+        return np.array(inter_pcors)
 
     def overall_corr_score(self, corr, n_features_on_party):
         """
@@ -465,9 +492,9 @@ class CorrelationEvaluator:
         :param n_features_on_party: [list] number of features on each party
         :return: [float] correlation score
         """
-        # inter_mcors = self._get_inter_corr(corr, n_features_on_party, mcor_func)
-        mcors = self._get_inner_and_inter_corr(corr, n_features_on_party)
-        N = mcors.shape[0]
+        # inter_pcors = self._get_inter_corr(corr, n_features_on_party, pcor_func)
+        pcors = self._get_inner_and_inter_corr(corr, n_features_on_party)
+        N = pcors.shape[0]
 
         # calculate the absolute difference between the inner-party correlation scores and the inter-party correlation
         # for each party
@@ -475,7 +502,7 @@ class CorrelationEvaluator:
         for i in range(N):
             for j in range(N):
                 if i != j:
-                    diffs[i] += (mcors[j][i] - mcors[i][i])     # in range [-1, 1]
+                    diffs[i] += (pcors[j][i] - pcors[i][i])  # in range [-1, 1]
             diffs[i] /= (N - 1)
         return np.mean(diffs)
 
@@ -500,7 +527,7 @@ class CorrelationEvaluator:
         :return: [float] correlation score
         """
         self.fit(Xs)
-        return self.evaluate()
+        return self.evaluate(Xs)
 
     def fit(self, Xs):
         """
@@ -515,7 +542,6 @@ class CorrelationEvaluator:
             self.corr = self.corr_func(torch.cat(Xs, dim=1))
         elif isinstance(Xs[0], np.ndarray):
             self.corr = self.corr_func(np.concatenate(Xs, axis=1))
-
         else:
             raise ValueError(f"Xs should be either np.ndarray or torch.Tensor, but got {type(Xs[0])}")
 
@@ -524,15 +550,124 @@ class CorrelationEvaluator:
         else:
             self.corr = np.nan_to_num(self.corr, nan=0)
 
+    class DuplicationElimination(ElementwiseDuplicateElimination):
+        def is_equal(self, perm_a, perm_b):
+            return perm_a.get("hash") == perm_b.get("hash")
+
+    # Nested class for BRKGA solver: max-pcor problem definition
+    class CorrMaxProblem(ElementwiseProblem):
+        def __init__(self, corr, n_features_on_party, evaluator=None, runner=None):
+            super().__init__(n_var=corr.shape[1], n_obj=1, n_constr=0, xl=-1, xu=1, elementwise_runner=runner)
+            self.corr = corr
+            self.n_features_on_party = n_features_on_party
+            self.evaluator = evaluator
+
+        # @cachetools.cached(cache=cachetools.TTLCache(maxsize=1000, ttl=60),
+        #                    key=lambda self, corr, order: hash(tuple(
+        #                        CorrelationSplitter.sort_order_by_party(order, self.n_features_on_party))))
+        def corr_score(self, corr, order):
+            corr_perm = corr[order, :][:, order]
+            return self.evaluator.overall_corr_score(corr_perm, self.n_features_on_party)
+
+        def _evaluate(self, x, out, *args, **kwargs):
+            order = np.argsort(x)
+            out['F'] = -self.corr_score(self.corr, order)
+            out['order'] = order
+            # sorted_order_by_party = CorrelationSplitter.sort_order_by_party(order, self.n_features_on_party)
+            out['hash'] = hash(tuple(order))
+
+    # Nested class for BRKGA solver: min-pcor problem definition
+    class CorrMinProblem(ElementwiseProblem):
+        def __init__(self, corr, n_features_on_party, evaluator=None, runner=None):
+            super().__init__(n_var=corr.shape[1], n_obj=1, n_constr=0, xl=-1, xu=1, elementwise_runner=runner)
+            self.corr = corr
+            self.n_features_on_party = n_features_on_party
+            self.evaluator = evaluator
+
+        def corr_score(self, corr, order):
+            corr_perm = corr[order, :][:, order]
+            return self.evaluator.overall_corr_score(corr_perm, self.n_features_on_party)
+
+        def _evaluate(self, x, out, *args, **kwargs):
+            order = np.argsort(x)
+            out['F'] = self.corr_score(self.corr, order)
+            out['order'] = order
+            # sorted_order_by_party = CorrelationSplitter.sort_order_by_party(order, self.n_features_on_party)
+            out['hash'] = hash(tuple(order))
+
+    def fit_min_max(self, n_elites=200, n_offsprings=700, n_mutants=100, n_gen=100, bias=0.7, verbose=False,
+                    seed=None, **kwargs):
+        """
+        Find the min-max value of Icor for all the possible feature split
+        :param X: [np.ndarray] global data set
+        :return: [tuple(float, float)] min-max value of Icor
+        """
+        # self.evaluator.corr = self.evaluator.corr_func(X)
+        # self.evaluator.n_features_on_party = self.split_num_features_equal(X.shape[1], self.num_parties)
+        if self.corr is None:
+            raise ValueError("Data matrix X is not provided, and self.corr is not calculated yet."
+                             "Please either provide X or call fit() first.")
+
+        algorithm = BRKGA(
+            n_elites=n_elites,
+            n_offsprings=n_offsprings,
+            n_mutants=n_mutants,
+            bias=bias,
+            eliminate_duplicates=self.DuplicationElimination(),
+        )
+
+        # calculate the min and max pcor
+        if verbose:
+            print("Calculating the min pcor of the overall correlation score...")
+        res_min = minimize(
+            self.CorrMinProblem(self.corr, self.n_features_on_party, evaluator=self,
+                                runner=self.runner),
+            algorithm,
+            ('n_gen', n_gen),
+            seed=seed,
+            verbose=verbose,
+        )
+        self.min_icor = res_min.F[0]
+        print(f"min_icor: {self.min_icor}")
+        if verbose:
+            print("Calculating the max icor of the overall correlation score...")
+        res_max = minimize(
+            self.CorrMaxProblem(self.corr, self.n_features_on_party, evaluator=self,
+                                runner=self.runner),
+            algorithm,
+            ('n_gen', n_gen),
+            seed=seed,
+            verbose=verbose,
+        )
+        self.max_icor = -res_max.F[0]
+        print(f"max_icor: {self.max_icor}")
+
     def evaluate(self, Xs=None):
         """
         Evaluate the correlation score of a vertical federated learning dataset with self.corr.
         :return: [float] correlation score
         """
+        if self.corr is None:
+            raise ValueError("Please call fit() or fit_evaluate() first to calculate the correlation matrix.")
         if Xs is not None:
             # If Xs is provided, update self.n_features_on_party
             self.n_features_on_party = self.check_data(Xs)
         return self.overall_corr_score(self.corr, self.n_features_on_party)
+
+    def evaluate_beta(self, Xs=None, clip=True) -> float:
+        if self.corr is None:
+            raise ValueError("Please call fit() or fit_evaluate() first to calculate the correlation matrix.")
+
+        if self.min_icor is None or self.max_icor is None:
+            # evaluate the min and max icor
+            self.fit_min_max()
+
+        score = self.evaluate(Xs)  # when Xs is None, self.corr and self.n_features_on_party should be already set
+        beta = (score - self.min_icor) / (self.max_icor - self.min_icor)
+        if clip:
+            return np.clip(beta, 0, 1).item()
+        else:
+            return beta
 
     def visualize(self, save_path=None, value=None, cmap='cividis', map_func=np.abs, fontsize=16, title_size=None):
         """
@@ -623,7 +758,6 @@ class CorrelationEvaluator:
 
 
 if __name__ == '__main__':
-
     X, y = load_svmlight_file("data/real/vehicle/processed/vehicle.libsvm")
     X = X.toarray()
 

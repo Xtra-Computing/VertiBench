@@ -1,6 +1,6 @@
 from numbers import Real
 import warnings
-import math
+import abc
 
 import numpy as np
 import torch
@@ -13,10 +13,53 @@ from pymoo.termination.default import DefaultSingleObjectiveTermination
 from pymoo.core.problem import StarmapParallelization
 from multiprocessing.pool import ThreadPool
 
-from .FeatureEvaluator import CorrelationEvaluator
+from .Evaluator import CorrelationEvaluator
 
 
-class ImportanceSplitter:
+class Splitter(abc.ABC):
+    def __init__(self, num_parties):
+        self.num_parties = num_parties
+
+    @abc.abstractmethod
+    def split_indices(self, *args, **kwargs):
+        """
+        Split the indices of X
+        :param X: [np.ndarray] 2D dataset
+        :return: [list] list of indices of each party
+        """
+        pass
+
+    def split(self, *Xs, indices=None, allow_empty_party=False, fill=None):
+        assert len(Xs) > 0, "At least one dataset should be given"
+        ans = []
+
+        # calculate the indices for each party for all datasets
+        if indices is None:
+            allX = np.concatenate(Xs, axis=0)
+            party_to_feature = self.split_indices(allX, allow_empty_party=allow_empty_party)
+        else:
+            party_to_feature = indices
+
+        # split each dataset
+        for X in Xs:
+            X_split = []
+            for i in range(self.num_parties):
+                selected = party_to_feature[i]  # selected column_ids
+                if fill is not None:
+                    X_party_i = np.full_like(X, fill)
+                    X_party_i[:, selected] = X[:, selected]
+                else:
+                    X_party_i = X[:, selected]
+                X_split.append(X_party_i)
+            ans.append(X_split)
+
+        if len(ans) == 1:
+            return ans[0]
+        else:
+            return ans
+
+
+class ImportanceSplitter(Splitter):
     def __init__(self, num_parties, weights=1, seed=None):
         """
         Split a 2D dataset by feature importance under dirichlet distribution (assuming the features are independent).
@@ -28,7 +71,7 @@ class ImportanceSplitter:
                         Meanwhile, larger weights mean less bias on the feature importance.
         :param seed: [int] random seed
         """
-        self.num_parties = num_parties
+        super().__init__(num_parties)
         self.weights = weights
         self.seed = seed
         np.random.seed(seed)
@@ -113,38 +156,9 @@ class ImportanceSplitter:
                 "The number of features should be the same as the number of columns of X"
 
         return party_to_feature
-    
-    def split(self, *Xs, indices=None, allow_empty_party=False, fill=None):
-        assert len(Xs) > 0, "At least one dataset should be given"
-        ans = []
-
-        # calculate the indices for each party for all datasets
-        if indices is None:
-            allX = np.concatenate(Xs, axis=0)
-            party_to_feature = self.split_indices(allX, allow_empty_party=allow_empty_party)
-        else:
-            party_to_feature = indices
-
-        # split each dataset
-        for X in Xs:
-            X_split = []
-            for i in range(self.num_parties):
-                selected = party_to_feature[i]  # selected column_ids
-                if fill is not None:
-                    X_party_i = np.full_like(X, fill)
-                    X_party_i[:, selected] = X[:, selected]
-                else:
-                    X_party_i = X[:, selected]
-                X_split.append(X_party_i)
-            ans.append(X_split)
-
-        if len(ans) == 1:
-            return ans[0]
-        else:
-            return ans
 
 
-class CorrelationSplitter:
+class CorrelationSplitter(Splitter):
 
     def __init__(self, num_parties: int, evaluator: CorrelationEvaluator = None, seed=None, gpu_id=None, n_jobs=1):
         """
@@ -154,12 +168,15 @@ class CorrelationSplitter:
         :param seed: [int] random seed
         :param gpu_id: [int] GPU id
         """
-        self.num_parties = num_parties
+        super().__init__(num_parties)
         self.evaluator = evaluator
+        if evaluator is None:
+            self.evaluator = CorrelationEvaluator(gpu_id=gpu_id)
         self.seed = seed
         self.gpu_id = gpu_id
         if self.gpu_id is not None:
-            assert evaluator.gpu_id == self.gpu_id, "The gpu_id of the evaluator should be the same as the gpu_id of the splitter"
+            assert self.evaluator.gpu_id == self.gpu_id, \
+                "The gpu_id of the evaluator should be the same as the gpu_id of the splitter"
             self.device = torch.device("cuda:{}".format(self.gpu_id))
         else:
             self.device = torch.device("cpu")
@@ -171,11 +188,11 @@ class CorrelationSplitter:
         # split result of the last call of fit()
         # self.corr = None      # use evaluator.corr instead
         # self.n_features_on_party = None   # use evaluator.n_features_on_party instead
-        self.min_mcor = None
-        self.max_mcor = None
+        self.min_icor = None
+        self.max_icor = None
 
         # best split result of all calls of split()
-        self.best_mcor = None
+        self.best_icor = None
         self.best_error = None
         self.best_feature_per_party = None
         self.best_permutation = None
@@ -194,61 +211,17 @@ class CorrelationSplitter:
         def is_equal(self, perm_a, perm_b):
             return perm_a.get("hash") == perm_b.get("hash")
 
-    # Nested class for BRKGA solver: max-mcor problem definition
-    class CorrMaxProblem(ElementwiseProblem):
-        def __init__(self, corr, n_features_on_party, evaluator: CorrelationEvaluator = None, runner=None):
-            super().__init__(n_var=corr.shape[1], n_obj=1, n_constr=0, xl=-1, xu=1, elementwise_runner=runner)
-            self.corr = corr
-            self.n_features_on_party = n_features_on_party
-            self.evaluator = evaluator
-
-        # @cachetools.cached(cache=cachetools.TTLCache(maxsize=1000, ttl=60),
-        #                    key=lambda self, corr, order: hash(tuple(
-        #                        CorrelationSplitter.sort_order_by_party(order, self.n_features_on_party))))
-        def corr_score(self, corr, order):
-            corr_perm = corr[order, :][:, order]
-            return self.evaluator.overall_corr_score(corr_perm, self.n_features_on_party)
-
-        def _evaluate(self, x, out, *args, **kwargs):
-            order = np.argsort(x)
-            out['F'] = -self.corr_score(self.corr, order)
-            out['order'] = order
-            # sorted_order_by_party = CorrelationSplitter.sort_order_by_party(order, self.n_features_on_party)
-            out['hash'] = hash(tuple(order))
-
-    # Nested class for BRKGA solver: min-mcor problem definition
-    class CorrMinProblem(ElementwiseProblem):
-        def __init__(self, corr, n_features_on_party, evaluator: CorrelationEvaluator = None, runner=None):
-            super().__init__(n_var=corr.shape[1], n_obj=1, n_constr=0, xl=-1, xu=1, elementwise_runner=runner)
-            self.corr = corr
-            self.n_features_on_party = n_features_on_party
-            self.evaluator = evaluator
-
-        # @cachetools.cached(cache=cachetools.TTLCache(maxsize=1000, ttl=60),
-        #                    key=lambda self, corr, order: hash(tuple(
-        #                        CorrelationSplitter.sort_order_by_party(order, self.n_features_on_party))))
-        def corr_score(self, corr, order):
-            corr_perm = corr[order, :][:, order]
-            return self.evaluator.overall_corr_score(corr_perm, self.n_features_on_party)
-
-        def _evaluate(self, x, out, *args, **kwargs):
-            order = np.argsort(x)
-            out['F'] = self.corr_score(self.corr, order)
-            out['order'] = order
-            # sorted_order_by_party = CorrelationSplitter.sort_order_by_party(order, self.n_features_on_party)
-            out['hash'] = hash(tuple(order))
-
-    # Nested class for BRKGA solver: best-matched-mcor problem definition
+    # Nested class for BRKGA solver: best-matched-icor problem definition
     class CorrBestMatchProblem(ElementwiseProblem):
-        def __init__(self, corr, n_features_on_party, beta, min_mcor, max_mcor, evaluator: CorrelationEvaluator = None,
+        def __init__(self, corr, n_features_on_party, beta, min_icor, max_icor, evaluator: CorrelationEvaluator = None,
                      runner=None):
             super().__init__(n_var=corr.shape[1], n_obj=1, n_constr=0, xl=-1, xu=1, elementwise_runner=runner)
-            assert min_mcor < max_mcor, f"min_mcor {min_mcor} should be smaller than max_mcor {max_mcor}"
+            assert min_icor < max_icor, f"min_icor {min_icor} should be smaller than max_icor {max_icor}"
             self.corr = corr
             self.n_features_on_party = n_features_on_party
             self.beta = beta
-            self.max_mcor = max_mcor
-            self.min_mcor = min_mcor
+            self.max_icor = max_icor
+            self.min_icor = min_icor
             self.evaluator = evaluator
 
         # @cachetools.cached(cache=cachetools.TTLCache(maxsize=10000, ttl=60),
@@ -260,27 +233,14 @@ class CorrelationSplitter:
 
         def _evaluate(self, x, out, *args, **kwargs):
             order = np.argsort(x)
-            mcor = self.corr_score(self.corr, order)
-            target_mcor = self.beta * self.max_mcor + (1 - self.beta) * self.min_mcor
+            icor = self.corr_score(self.corr, order)
+            target_icor = self.beta * self.max_icor + (1 - self.beta) * self.min_icor
 
-            out['F'] = np.abs(mcor - target_mcor)
-            out['mcor'] = mcor
+            out['F'] = np.abs(icor - target_icor)
+            out['icor'] = icor
             out['order'] = order
             # sorted_order_by_party = CorrelationSplitter.sort_order_by_party(order, self.n_features_on_party)
             out['hash'] = hash(tuple(order))
-
-    @staticmethod
-    def split_num_features_equal(n_features, n_parties):
-        """
-        Split n_features into n_parties equally. The first party may have more features.
-        :param n_features: (int) number of features
-        :param n_parties: (int) number of parties
-        :return: (list) number of features on each party
-        """
-        n_features_on_party = [n_features // n_parties] * n_parties
-        n_features_on_party[0] += n_features % n_parties
-        assert sum(n_features_on_party) == n_features
-        return n_features_on_party
 
     def check_fit_data(self):
         """
@@ -288,12 +248,12 @@ class CorrelationSplitter:
         """
         assert self.evaluator.corr is not None, "self.evaluator.corr is None. Please call fit() first."
         assert self.evaluator.n_features_on_party is not None, "self.evaluator.n_features_on_party is None. Please call fit() first."
-        assert self.min_mcor is not None, "self.min_mcor is None. Please call fit() first."
-        assert self.max_mcor is not None, "self.max_mcor is None. Please call fit() first."
+        assert self.min_icor is not None, "self.min_icor is None. Please call fit() first."
+        assert self.max_icor is not None, "self.max_icor is None. Please call fit() first."
 
-    def fit(self, X, n_elites=200, n_offsprings=700, n_mutants=100, n_gen=100, bias=0.7, verbose=False, **kwargs):
+    def fit(self, X, **kwargs):
         """
-        Calculate the min and max mcor of the overall correlation score.
+        Calculate the min and max icor of the overall correlation score.
         Required parameters:
         :param X: [np.ndarray] 2D dataset
 
@@ -306,46 +266,17 @@ class CorrelationSplitter:
         :param verbose: (bool) whether to print the progress
         :param kwargs: other unused args
         """
-        self.evaluator.corr = self.evaluator.corr_func(X)
-        self.evaluator.n_features_on_party = self.split_num_features_equal(X.shape[1], self.num_parties)
-
-        algorithm = BRKGA(
-            n_elites=n_elites,
-            n_offsprings=n_offsprings,
-            n_mutants=n_mutants,
-            bias=bias,
-            eliminate_duplicates=self.DuplicationElimination(),
-        )
-
-        # calculate the min and max mcor
-        if verbose:
-            print("Calculating the min mcor of the overall correlation score...")
-        res_min = minimize(
-            self.CorrMinProblem(self.evaluator.corr, self.evaluator.n_features_on_party, evaluator=self.evaluator, runner=self.runner),
-            algorithm,
-            ('n_gen', n_gen),
-            seed=self.seed,
-            verbose=verbose,
-        )
-        self.min_mcor = res_min.F[0]
-        print(f"min_mcor: {self.min_mcor}")
-        if verbose:
-            print("Calculating the max mcor of the overall correlation score...")
-        res_max = minimize(
-            self.CorrMaxProblem(self.evaluator.corr, self.evaluator.n_features_on_party, evaluator=self.evaluator, runner=self.runner),
-            algorithm,
-            ('n_gen', n_gen),
-            seed=self.seed,
-            verbose=verbose,
-        )
-        self.max_mcor = -res_max.F[0]
-        print(f"max_mcor: {self.max_mcor}")
+        Xs = np.array_split(X, self.num_parties, axis=1)
+        self.evaluator.fit(Xs)
+        self.evaluator.fit_min_max(**kwargs)
+        self.min_icor = self.evaluator.min_icor
+        self.max_icor = self.evaluator.max_icor
 
     def split_indices(self, X, n_elites=20, n_offsprings=70, n_mutants=10, n_gen=100, bias=0.7, verbose=False,
               beta=0.5, term_tol=1e-4, term_period=10):
         """
-        Use BRKGA to find the best order of features that minimizes the difference between the mean of mcor and the
-        target. split() assumes that the min and max mcor have been calculated by fit().
+        Use BRKGA to find the best order of features that minimizes the difference between the mean of icor and the
+        target. split() assumes that the min and max icor have been calculated by fit().
         Required parameters:
         :param X: [np.ndarray] 2D dataset
 
@@ -364,6 +295,8 @@ class CorrelationSplitter:
         :return: (np.ndarray) indices of features in the order of importance
         """
         self.check_fit_data()
+        if not (0 <= beta <= 1):
+            raise ValueError(f"beta should be in [0, 1], got {beta}")
 
         # termination by number of generations or the error is less than 1e-6
         termination = DefaultSingleObjectiveTermination(ftol=term_tol, n_max_gen=n_gen, period=term_period)
@@ -375,11 +308,11 @@ class CorrelationSplitter:
             eliminate_duplicates=self.DuplicationElimination(),
         )
 
-        # find the best permutation order that makes the mcor closest to the target mcor
-        # target_mcor = beta * max_mcor + (1 - beta) * min_mcor
+        # find the best permutation order that makes the icor closest to the target icor
+        # target_icor = beta * max_icor + (1 - beta) * min_icor
         res_beta = minimize(
-            self.CorrBestMatchProblem(self.evaluator.corr, self.evaluator.n_features_on_party, beta, self.min_mcor,
-                                      self.max_mcor,
+            self.CorrBestMatchProblem(self.evaluator.corr, self.evaluator.n_features_on_party, beta, self.min_icor,
+                                      self.max_icor,
                                       evaluator=self.evaluator, runner=self.runner),
             algorithm,
             termination,
@@ -387,10 +320,10 @@ class CorrelationSplitter:
             verbose=verbose,
         )
         self.best_permutation = res_beta.opt.get('order')[0].astype(int)
-        self.best_mcor = res_beta.opt.get('mcor')[0]
+        self.best_icor = res_beta.opt.get('icor')[0]
         self.best_error = res_beta.F[0]
         # print(f"Best permutation order: {permute_order}")
-        # print(f"Beta {self.beta}, Best match mcor: {best_match_mcor}")
+        # print(f"Beta {self.beta}, Best match icor: {best_match_icor}")
 
         # summarize the feature ids on each party
         party_cut_points = np.cumsum(self.evaluator.n_features_on_party)
@@ -403,78 +336,21 @@ class CorrelationSplitter:
         assert (np.sort(np.concatenate(self.best_feature_per_party)) == np.arange(X.shape[1])).all()
         return self.best_feature_per_party
 
-    def split(self, *Xs, indices=None, split_image=False, image_fill=255, **kwargs):
-        """
-        same as self.split
-        :param Xs: [np.ndarray] 2D dataset
-        :param indices: [list] indices of features on each party. If not given, the indices will be generated randomly.
-        :param split_image: [bool] whether to split the image
-        :param image_fill: [int] the value to fill the rest of the image (255 for white, 0 for black)
-        """
-        ans = []
-        if indices is None:
-            all_X = np.concatenate(Xs, axis=0)
-            party_to_feature = self.split_indices(all_X, **kwargs)
-        else:
-            party_to_feature = indices
-
-        if kwargs['verbose']:
-            sorted_feature_indices = [np.sort(party) for party in party_to_feature]
-            print("Sorted feature indices: ", sorted_feature_indices)
-
-        for X in Xs:
-            Xparties = []
-            for i in range(self.num_parties):
-                selected = party_to_feature[i]
-                if split_image:
-                    line = np.full(X.shape, image_fill, dtype=np.uint8)
-                    line[:, selected] = X[:, selected]
-                else:
-                    line = X[:, selected]
-                Xparties.append(line)
-            ans.append(Xparties)
-        if len(ans) == 1:
-            return ans[0]
-        else:
-            return ans
-
-    def fit_split(self, *Xs, **kwargs):
-        X = np.concatenate(Xs, axis=0)
+    def fit_split(self, X, **kwargs):
         self.fit(X, **kwargs)
-        return self.splitXs(*Xs, **kwargs)
+        return self.split(X, **kwargs)
 
     def visualize(self, *args, **kwargs):
         return self.evaluator.visualize(*args, **kwargs)
 
-    def evaluate_beta(self, score):
-        """
-        Evaluate the beta value that makes the score closest to the target score.
-        :param score: [float] the score to be evaluated
-        :return: [float] the beta value that makes the score closest to the target score
-        """
-        if self.min_mcor is None or self.max_mcor is None:
-            raise ValueError("The min and max mcor have not been calculated. Please call fit() first.")
-        if not (self.min_mcor <= score <= self.max_mcor):
-            warnings.warn(f"The score {score} is out of range [{self.min_mcor}, {self.max_mcor}].")
-        return (score - self.min_mcor) / (self.max_mcor - self.min_mcor)
 
-    def evaluate_alpha(self, scores):
-        """
-        Evaluate the alpha value of a symmetric Dirichlet distribution that has the closest variance with the given
-        Dirichlet distribution using scores as the parameters.
-        :param scores: the importance scores of each party
-        :return: [float] the alpha value that makes the score closest to the target score
-        """
-        assert len(scores) == self.num_parties
-        scores = scores / np.sum(scores)    # normalize the scores
-        score_var = np.var(scores)
-        est_alpha = (self.num_parties - 1 - self.num_parties ** 2 * score_var) / (self.num_parties ** 3 * score_var)
-        return est_alpha
-
-
-class SimpleSplitter:
+class SimpleSplitter(Splitter):
     def __init__(self, num_parties):
-        self.num_parties = num_parties
+        """
+        Split a 2D dataset by equally dividing the features.
+        :param num_parties: [int] number of parties
+        """
+        super().__init__(num_parties)
 
     def split_indices(self, n_features):
         """
@@ -485,30 +361,5 @@ class SimpleSplitter:
         indices = np.arange(n_features)
         return np.array_split(indices, self.num_parties)
 
-    def split(self, X, indices=None):
-        if indices is None:
-            indices = self.split_indices(X.shape[1])
-
-        # split X
-        Xs = []
-        for feature_ids in indices:
-            Xs.append(X[:, feature_ids])
-        return Xs
-
-    def splitXs(self, *Xs, indices=None):
-        if indices is None:
-            indices = self.split_indices(Xs[0].shape[1])
-
-        # split X
-        ans = []
-        for X in Xs:
-            Xparties = []
-            for feature_ids in indices:
-                Xparties.append(X[:, feature_ids])
-            ans.append(Xparties)
-        if len(ans) == 1:
-            return ans[0]
-        else:
-            return ans
 
 
