@@ -9,13 +9,13 @@ authors = [
     { name = "Junyi Hou" },
     { name = "Bingsheng He" }
 ]
-version = "0.1.1"
+version = "0.1.1a"
 description = "A tool for benchmarking vertical federated learning algorithms, containing synthetic data split and data evaluation."
 readme = "README.md"
 license = { file = "LICENSE" }  # If you have a LICENSE file
 keywords = ["vertical federated learning", "benchmark", "synthetic data", "feature split", "data valuation", "federated learning"]
 classifiers = [
-    "Development Status :: 2 - Pre-Alpha",
+    "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
