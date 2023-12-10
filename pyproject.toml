@@ -9,7 +9,7 @@ authors = [
     { name = "Junyi Hou" },
     { name = "Bingsheng He" }
 ]
-version = "0.1.1a"
+version = "0.1.1a0"
 description = "A tool for benchmarking vertical federated learning algorithms, containing synthetic data split and data evaluation."
 readme = "README.md"
 license = { file = "LICENSE" }  # If you have a LICENSE file
