@@ -129,7 +129,7 @@ class CorrelationEvaluator:
     Correlation evaluator for VFL datasets
     """
 
-    def __init__(self, corr_func='spearmanr', gpu_id=None, svd_algo='auto', n_jobs=1, **kwargs):
+    def __init__(self, corr_func='spearmanr', gpu_id=None, svd_algo='auto', n_jobs=None, **kwargs):
         """
         :param corr_func: [str] function to calculate the correlation between two features
         :param gamma: [float] weight of the inner-party correlation score

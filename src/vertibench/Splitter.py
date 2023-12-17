@@ -160,7 +160,7 @@ class ImportanceSplitter(Splitter):
 
 class CorrelationSplitter(Splitter):
 
-    def __init__(self, num_parties: int, evaluator: CorrelationEvaluator = None, seed=None, gpu_id=None, n_jobs=1):
+    def __init__(self, num_parties: int, evaluator: CorrelationEvaluator = None, seed=None, gpu_id=None, n_jobs=None):
         """
         Split a 2D dataset by feature correlation (assuming the features are equally important).
         :param num_parties: [int] number of parties
@@ -273,7 +273,7 @@ class CorrelationSplitter(Splitter):
         self.max_icor = self.evaluator.max_icor
 
     def split_indices(self, X, n_elites=20, n_offsprings=70, n_mutants=10, n_gen=100, bias=0.7, verbose=False,
-              beta=0.5, term_tol=1e-4, term_period=10):
+              beta=0.5, term_tol=1e-4, term_period=10, **kwargs):
         """
         Use BRKGA to find the best order of features that minimizes the difference between the mean of icor and the
         target. split() assumes that the min and max icor have been calculated by fit().
