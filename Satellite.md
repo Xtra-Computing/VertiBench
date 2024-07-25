@@ -70,10 +70,12 @@ See `Satellite.ipynb` for more details.
 - **algorithm:** `SplitResNet` (from torchvision.models import resnet18)
 - **#classes:** `4` (four land types)
 - **#parties:** `16`
+- **#epochs:** `50`
 - **metric:** `accuracy`
 - **learning_rate:** `1e-5`
 - **batch_size:** `32`
 - **loss_function:** `Cross-Entropy`
+- **early_stopping:** `None`
 - **channel:** `13`
 - **kernel_size :** `9`
 - **out_activation:** `None`
