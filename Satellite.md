@@ -65,6 +65,57 @@ the pixel values of each image are scaled to integer values within the range of 
 
 See `Satellite.ipynb` for more details.
 
+## 4. Classification Task Details
+
+- **algorithm:** `SplitResNet` (from torchvision.models import resnet18)
+- **#classes:** `4` (four land types)
+- **#parties:** `16`
+- **metric:** `accuracy`
+- **learning_rate:** `1e-5`
+- **batch_size:** `32`
+- **loss_function:** `Cross-Entropy`
+- **channel:** `13`
+- **kernel_size :** `9`
+- **out_activation:** `None`
+- **agg_hidden:** `[1000, out_dim]`
+- **out_dim:** `4` (same as #classes)
+- **optimizer:** `Adam`
+- **weight_decay:** `1e-5`
+- **lr_scheduler**: `StepLR(step_size=10, gamma=0.5)`
+
+```py
+class SplitResNet(nn.Module):
+    def __init__(self, n_parties, channels, kernel_size=9, agg_hidden=None, out_activation=None):
+        super().__init__()
+        self.n_parties = n_parties
+        self.out_activation = out_activation
+        self.local_resnet_list = nn.ModuleList()
+        local_output_dims = []
+        for i in range(self.n_parties):
+            resnet = resnet18(weights=None)
+            local_output_dims.append(resnet.fc.in_features)
+            resnet.fc = nn.Identity()
+            resnet.conv1 = nn.Conv2d(channels, 64, kernel_size, stride=2, padding=3, bias=False)
+            self.local_resnet_list.append(resnet)
+            print("local output dims", local_output_dims)
+        self.cut_dim = sum(local_output_dims)
+        if agg_hidden is None:
+            self.agg_hidden = [100, 1]
+        else:
+            self.agg_hidden = agg_hidden
+        self.agg_mlp = MLP(self.cut_dim, self.agg_hidden)
+        if out_activation is None:
+            self.out_activation = nn.Identity()
+        else:
+            self.out_activation = out_activation
+
+    def forward(self, Xs):
+        # print("Shape of Xs: ", [Xi.shape for Xi in Xs])
+        local_outputs = [resnet(Xi) for resnet, Xi in zip(self.local_resnet_list, Xs)]
+        agg_input = torch.cat(local_outputs, dim=1)
+        agg_output = self.agg_mlp(agg_input)
+        return self.out_activation(agg_output)
+```
 ## License
 
 The VertiBench Satellite Dataset is licensed under the [Creative Commons Attribution 4.0 International License](https://creativecommons.org/licenses/by/4.0/). You are free to share and adapt the material for any purpose, even commercially, as long as you provide appropriate credit, link to the license, and indicate if changes were made.
