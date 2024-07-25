@@ -116,6 +116,7 @@ class SplitResNet(nn.Module):
         agg_output = self.agg_mlp(agg_input)
         return self.out_activation(agg_output)
 ```
+
 ## License
 
 The VertiBench Satellite Dataset is licensed under the [Creative Commons Attribution 4.0 International License](https://creativecommons.org/licenses/by/4.0/). You are free to share and adapt the material for any purpose, even commercially, as long as you provide appropriate credit, link to the license, and indicate if changes were made.
