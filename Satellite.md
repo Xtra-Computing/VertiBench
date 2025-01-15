@@ -8,7 +8,7 @@ The Satellite dataset encompasses **`four land types`** as labels, namely `Amnes
 
 
 
-<img width="1222" alt="all bands" src="https://github.com/JerryLife/VertiBench/assets/14367694/4386ed55-76b5-4282-a374-8a03c9da509c">
+<img width="1222" alt="all bands" src="fig/satellite1.png">
 
 See `Satellite.ipynb` for more details.
 
@@ -43,7 +43,7 @@ md5sum satellite.zip #
 The dataset is organized into `16` parties, each containing test and training files in CSV formats. 
 
 The naming convention follows the pattern `satellite_partyX_test.csv` and `satellite_partyX_train.csv`, where `X` ranges from `0` to `15`.
-<img width="1126" alt="file" src="https://github.com/JerryLife/VertiBench/assets/14367694/f2604d16-b3a5-49b6-a919-494bf42cdad5">
+<img width="1126" alt="file" src="fig/satellite-file-structure.png">
 
 
 
@@ -55,7 +55,7 @@ id, y, x0, x1, ..., x324531
 ```
 
 For example the `satellite_party0_test.csv`
-<img width="1129" alt="csv" src="https://github.com/JerryLife/VertiBench/assets/14367694/2920bed6-ba7c-4f39-88bc-d8746d72718b">
+<img width="1129" alt="csv" src="fig/satellite-csv.png">
 
 ## 3. Convert CSV to Image
 
