@@ -1,13 +1,9 @@
-import warnings
-from typing import Iterable
-import time
 import os
-
 import numpy as np
 import pandas as pd
 import torch
 import torch.linalg
-from scipy.stats import spearmanr, hmean, gmean
+from scipy.stats import spearmanr
 from sklearn.utils.extmath import randomized_svd
 import shap
 import matplotlib.pyplot as plt
@@ -17,7 +13,6 @@ from pymoo.algorithms.soo.nonconvex.brkga import BRKGA
 from pymoo.core.duplicate import ElementwiseDuplicateElimination
 from pymoo.core.problem import ElementwiseProblem
 from pymoo.optimize import minimize
-from pymoo.termination.default import DefaultSingleObjectiveTermination
 from pymoo.core.problem import StarmapParallelization
 from multiprocessing.pool import ThreadPool
 

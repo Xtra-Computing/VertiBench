@@ -1,10 +1,8 @@
 from numbers import Real
 import warnings
 import abc
-
 import numpy as np
 import torch
-import torch.linalg
 from pymoo.algorithms.soo.nonconvex.brkga import BRKGA
 from pymoo.core.duplicate import ElementwiseDuplicateElimination
 from pymoo.core.problem import ElementwiseProblem
@@ -12,7 +10,6 @@ from pymoo.optimize import minimize
 from pymoo.termination.default import DefaultSingleObjectiveTermination
 from pymoo.core.problem import StarmapParallelization
 from multiprocessing.pool import ThreadPool
-
 from .Evaluator import CorrelationEvaluator
 
 
