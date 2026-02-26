@@ -1,12 +1,9 @@
 import unittest
-
-from collections import defaultdict
 import numpy as np
 import xgboost as xgb
 from sklearn.datasets import make_classification
 from sklearn.linear_model import LinearRegression
-
-from src.vertibench.Evaluator import ImportanceEvaluator, CorrelationEvaluator
+from vertibench.Evaluator import ImportanceEvaluator
 
 
 class TestAlphaEvaluator(unittest.TestCase):
@@ -58,3 +55,7 @@ class TestAlphaEvaluator(unittest.TestCase):
             lr = LinearRegression()
             lr.fit(np.array(split_ratios).reshape(-1, 1), np.array(alpha1s).reshape(-1, 1))
             self.assertGreater(lr.coef_[0][0], 0)
+
+
+if __name__ == '__main__':
+    unittest.main()
