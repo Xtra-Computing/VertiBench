@@ -1,11 +1,9 @@
 import unittest
-
 from collections import defaultdict
 import numpy as np
 import xgboost as xgb
 from sklearn.datasets import make_classification
-
-from src.vertibench.Evaluator import ImportanceEvaluator, CorrelationEvaluator
+from vertibench.Evaluator import ImportanceEvaluator, CorrelationEvaluator
 
 
 def generate_data():
