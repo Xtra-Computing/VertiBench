@@ -1,14 +1,11 @@
 import unittest
-import random
 from itertools import product
 from collections import defaultdict
 from sklearn.datasets import make_classification
-
 import numpy as np
 from scipy.stats import spearmanr
 import xgboost as xgb
-from src.vertibench.Splitter import ImportanceSplitter, CorrelationSplitter, SimpleSplitter
-from src.vertibench.Evaluator import ImportanceEvaluator, CorrelationEvaluator
+from vertibench.Splitter import ImportanceSplitter, CorrelationSplitter
 
 
 def generate_data():
@@ -263,4 +260,5 @@ class TestCorrelationSplitter(unittest.TestCase):
                         self.assertAlmostEqual(beta, beta_eval, delta=0.1)
 
 
-
+if __name__ == '__main__':
+    unittest.main()
