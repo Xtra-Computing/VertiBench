@@ -320,7 +320,7 @@ class CorrelationSplitter(Splitter):
         self.best_icor = res_beta.opt.get('icor')[0]
         self.best_error = res_beta.F[0]
         # print(f"Best permutation order: {permute_order}")
-        # print(f"Beta {self.beta}, Best match icor: {best_match_icor}")
+        # print(f"Beta {beta}, Best match icor: {self.best_icor}")
 
         # summarize the feature ids on each party
         party_cut_points = np.cumsum(self.evaluator.n_features_on_party)
