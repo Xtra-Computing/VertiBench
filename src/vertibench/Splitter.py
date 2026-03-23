@@ -57,12 +57,12 @@ class Splitter(abc.ABC):
 
 
 class ImportanceSplitter(Splitter):
-    def __init__(self, num_parties, weights=1, seed=None):
+    def __init__(self, num_parties, weights=1., seed=None):
         """
         Split a 2D dataset by feature importance under dirichlet distribution (assuming the features are independent).
         :param num_parties: [int] number of parties
-        :param weights: [int | list with size num_parties]
-                        If weights is an int, the weight of each party is the same.
+        :param weights: [float | list with size num_parties]
+                        If weights is a float, the weight of each party is the same. Equivalent to an array of [weights]*num_parties.
                         If weights is an array, the weight of each party is the corresponding element in the array.
                         The weights indicate the expected sum of feature importance of each party.
                         Meanwhile, larger weights mean less bias on the feature importance.
@@ -72,8 +72,8 @@ class ImportanceSplitter(Splitter):
         self.weights = weights
         self.seed = seed
         np.random.seed(seed)
-        if isinstance(self.weights, Real):
-            self.weights = [self.weights for _ in range(self.num_parties)]
+        if isinstance(self.weights, Real):  # both int & float values pass this 'if'
+            self.weights = [self.weights for _ in range(self.num_parties)]  # a uniform weights array is constructed
 
         self.check_params()
 
@@ -270,7 +270,7 @@ class CorrelationSplitter(Splitter):
         self.max_icor = self.evaluator.max_icor
 
     def split_indices(self, X, n_elites=20, n_offsprings=70, n_mutants=10, n_gen=100, bias=0.7, verbose=False,
-              beta=0.5, term_tol=1e-4, term_period=10):
+              beta=0.5, term_tol=1e-4, term_period=10, **kwargs):
         """
         Use BRKGA to find the best order of features that minimizes the difference between the mean of icor and the
         target. split() assumes that the min and max icor have been calculated by fit().
