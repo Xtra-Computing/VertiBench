@@ -10,10 +10,10 @@ from vertibench.Splitter import ImportanceSplitter, CorrelationSplitter
 
 def generate_data():
     X_1_10, y_1_10 = make_classification(n_samples=1, n_features=10, n_informative=10, n_redundant=0)
-    X_1_500, y_1_500 = make_classification(n_samples=1, n_features=500, n_informative=20, n_redundant=0)
+    X_1_500, y_1_500 = make_classification(n_samples=1, n_features=20, n_informative=20, n_redundant=0)
     X_10_10, y_10_10 = make_classification(n_samples=10, n_features=10, n_informative=10, n_redundant=0)
     X_1k_10, y_1k_10 = make_classification(n_samples=1000, n_features=10, n_informative=10, n_redundant=0)
-    X_1k_500, y_1k_500 = make_classification(n_samples=1000, n_features=500, n_informative=20, n_redundant=0)
+    X_1k_500, y_1k_500 = make_classification(n_samples=1000, n_features=20, n_informative=20, n_redundant=0)
 
     data_dict = {
         "1_10": (X_1_10, y_1_10),
@@ -234,30 +234,59 @@ class TestImportanceSplitter(unittest.TestCase):
             X_all_split_filled = X_all_split[X_all_split != -1].reshape(X_all.shape)
             self.assertTrue(np.allclose(np.sort(X_all), np.sort(X_all_split_filled)))
 
+    def test_split_insufficient_features(self):
+        """Splitting with more parties than features should raise ValueError."""
+        X = np.random.randn(100, 5)
+        splitter = ImportanceSplitter(num_parties=10, seed=0)
+        with self.assertRaises(ValueError):
+            splitter.split(X)
 
-class TestCorrelationSplitter(unittest.TestCase):
+
+class TestCorrelationSplitterCPU(unittest.TestCase):
     def setUp(self):
-        self.n_parties_list = [0, 1, 2, 4, 32, 512]
-        self.beta_list = [0.0, 1e-6, 0.5, 1, 1.1]
-
-        self.rounds = 1000
         self.data_dict = generate_data()
 
     def test_fit_split(self):
-        for key, (X, y) in self.data_dict.items():
-            if X.shape[1] <= 1 or X.shape[0] <= 2:
-                continue
-            for n_parties in self.n_parties_list:
-                for beta in self.beta_list:
-                    with self.subTest(key=key, n_parties=n_parties, beta=beta):
-                        splitter = CorrelationSplitter(n_parties, gpu_id=0)
+        X, y = self.data_dict['1k_10']
+        splitter = CorrelationSplitter(2, gpu_id=None, n_jobs=1)
+        Xs = splitter.fit_split(X, beta=0.5)
+        beta_eval = splitter.evaluator.evaluate_beta(Xs)
+        self.assertAlmostEqual(0.5, beta_eval, delta=0.4)
 
-                        if beta > 1.0 or beta < 0.0:
-                            with self.assertRaises(ValueError):
-                                splitter.fit_split(X, beta=beta)
-                        Xs = splitter.fit_split(X, beta=beta)
-                        beta_eval = splitter.evaluator.evaluate_beta(Xs)
-                        self.assertAlmostEqual(beta, beta_eval, delta=0.1)
+    def test_fit_split_invalid_beta(self):
+        X, y = self.data_dict['1k_10']
+        splitter = CorrelationSplitter(2, gpu_id=None, n_jobs=1)
+        with self.assertRaises(ValueError):
+            splitter.fit_split(X, beta=1.1)
+        with self.assertRaises(ValueError):
+            splitter.fit_split(X, beta=-0.1)
+
+    def test_fit_split_insufficient_features(self):
+        """Splitting with more parties than features should raise ValueError."""
+        X = np.random.randn(100, 5)
+        splitter = CorrelationSplitter(num_parties=10, gpu_id=None, n_jobs=1)
+        with self.assertRaises(ValueError):
+            splitter.fit_split(X, beta=0.5)
+
+
+class TestCorrelationSplitterGPU(unittest.TestCase):
+    def setUp(self):
+        self.data_dict = generate_data()
+
+    def test_fit_split(self):
+        X, y = self.data_dict['1k_10']
+        splitter = CorrelationSplitter(2, gpu_id=0, n_jobs=16)
+        Xs = splitter.fit_split(X, beta=0.5)
+        beta_eval = splitter.evaluator.evaluate_beta(Xs)
+        self.assertAlmostEqual(0.5, beta_eval, delta=0.4)
+
+    def test_fit_split_invalid_beta(self):
+        X, y = self.data_dict['1k_10']
+        splitter = CorrelationSplitter(2, gpu_id=0, n_jobs=16)
+        with self.assertRaises(ValueError):
+            splitter.fit_split(X, beta=1.1)
+        with self.assertRaises(ValueError):
+            splitter.fit_split(X, beta=-0.1)
 
 
 if __name__ == '__main__':

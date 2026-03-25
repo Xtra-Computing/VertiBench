@@ -26,14 +26,18 @@ class Splitter(abc.ABC):
         """
         pass
 
-    def split(self, *Xs, indices=None, allow_empty_party=False, fill=None):
+    def split(self, *Xs, indices=None, allow_empty_party=False, fill=None, **kwargs):
         assert len(Xs) > 0, "At least one dataset should be given"
+        n_features = Xs[0].shape[1]
+        if n_features < self.num_parties:
+            raise ValueError(
+                f"Number of features ({n_features}) must be >= number of parties ({self.num_parties})")
         ans = []
 
         # calculate the indices for each party for all datasets
         if indices is None:
             allX = np.concatenate(Xs, axis=0)
-            party_to_feature = self.split_indices(allX, allow_empty_party=allow_empty_party)
+            party_to_feature = self.split_indices(allX, allow_empty_party=allow_empty_party, **kwargs)
         else:
             party_to_feature = indices
 
@@ -57,12 +61,12 @@ class Splitter(abc.ABC):
 
 
 class ImportanceSplitter(Splitter):
-    def __init__(self, num_parties, weights=1, seed=None):
+    def __init__(self, num_parties, weights=1., seed=None):
         """
         Split a 2D dataset by feature importance under dirichlet distribution (assuming the features are independent).
         :param num_parties: [int] number of parties
-        :param weights: [int | list with size num_parties]
-                        If weights is an int, the weight of each party is the same.
+        :param weights: [float | list with size num_parties]
+                        If weights is a float, the weight of each party is the same. Equivalent to an array of [weights]*num_parties.
                         If weights is an array, the weight of each party is the corresponding element in the array.
                         The weights indicate the expected sum of feature importance of each party.
                         Meanwhile, larger weights mean less bias on the feature importance.
@@ -72,8 +76,8 @@ class ImportanceSplitter(Splitter):
         self.weights = weights
         self.seed = seed
         np.random.seed(seed)
-        if isinstance(self.weights, Real):
-            self.weights = [self.weights for _ in range(self.num_parties)]
+        if isinstance(self.weights, Real):  # both int & float values pass this 'if'
+            self.weights = [self.weights for _ in range(self.num_parties)]  # a uniform weights array is constructed
 
         self.check_params()
 
@@ -103,7 +107,7 @@ class ImportanceSplitter(Splitter):
         xs.append(1 - sum(xs))
         return np.array(xs)
 
-    def split_indices(self, X, allow_empty_party=False):
+    def split_indices(self, X, allow_empty_party=False, **kwargs):
         """
         Split the indices of X by feature importance.
         :param allow_empty_party: [bool] whether to allow parties with zero features
@@ -168,7 +172,7 @@ class CorrelationSplitter(Splitter):
         super().__init__(num_parties)
         self.evaluator = evaluator
         if evaluator is None:
-            self.evaluator = CorrelationEvaluator(gpu_id=gpu_id)
+            self.evaluator = CorrelationEvaluator(gpu_id=gpu_id, n_jobs=n_jobs)
         self.seed = seed
         self.gpu_id = gpu_id
         if self.gpu_id is not None:
@@ -320,7 +324,7 @@ class CorrelationSplitter(Splitter):
         self.best_icor = res_beta.opt.get('icor')[0]
         self.best_error = res_beta.F[0]
         # print(f"Best permutation order: {permute_order}")
-        # print(f"Beta {self.beta}, Best match icor: {best_match_icor}")
+        # print(f"Beta {beta}, Best match icor: {self.best_icor}")
 
         # summarize the feature ids on each party
         party_cut_points = np.cumsum(self.evaluator.n_features_on_party)
@@ -333,9 +337,17 @@ class CorrelationSplitter(Splitter):
         assert (np.sort(np.concatenate(self.best_feature_per_party)) == np.arange(X.shape[1])).all()
         return self.best_feature_per_party
 
-    def fit_split(self, X, **kwargs):
-        self.fit(X, **kwargs)
-        return self.split(X, **kwargs)
+    def fit_split(self, X, beta=0.5, **fit_kwargs):
+        """
+        Fit the splitter and split the data.
+        :param X: [np.ndarray] 2D dataset
+        :param beta: [float] the tightness of inner-party correlation (passed to split_indices, not fit)
+        :param fit_kwargs: additional keyword arguments passed to fit() (BRKGA parameters for fit_min_max)
+        """
+        if not (0 <= beta <= 1):
+            raise ValueError(f"beta should be in [0, 1], got {beta}")
+        self.fit(X, **fit_kwargs)
+        return self.split(X, beta=beta)
 
     def visualize(self, *args, **kwargs):
         return self.evaluator.visualize(*args, **kwargs)
