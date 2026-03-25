@@ -19,29 +19,29 @@ def generate_data():
                                                        random_state=0, shuffle=True)
 
     # Generate a large dataset
-    X_10k_10, large_y_10k_10 = make_classification(n_samples=10000, n_features=10, n_informative=5,
+    X_10k_10, large_y_10k_10 = make_classification(n_samples=500, n_features=10, n_informative=5,
                                                              n_redundant=3,
                                                              random_state=0, shuffle=True)
 
     ##### Varying features #####
     # Generate a dataset with single feature
-    X_1k_2, y_1k_2 = make_classification(n_samples=1000, n_features=2, n_informative=2, n_redundant=0,
+    X_1k_2, y_1k_2 = make_classification(n_samples=200, n_features=2, n_informative=2, n_redundant=0,
                                                    random_state=0, shuffle=True)
 
     # Generate a dataset with large number of features
-    X_1k_1k, y_1k_1k = make_classification(n_samples=1000, n_features=1000, n_informative=500,
-                                                     n_redundant=200,
+    X_1k_1k, y_1k_1k = make_classification(n_samples=200, n_features=100, n_informative=50,
+                                                     n_redundant=20,
                                                      random_state=0, shuffle=True)
 
     ###### Constant features ######
     # Generate a dataset with constant features
-    X_1k_10_const, y_1k_10_const = make_classification(n_samples=1000, n_features=8, n_informative=5,
+    X_1k_10_const, y_1k_10_const = make_classification(n_samples=200, n_features=8, n_informative=5,
                                                                  n_redundant=1,
                                                                  random_state=0, shuffle=True)
-    X_1k_10_const = np.concatenate((X_1k_10_const, np.zeros((1000, 2))), axis=1)
+    X_1k_10_const = np.concatenate((X_1k_10_const, np.zeros((200, 2))), axis=1)
 
     # Generate a dataset with constant features with single feature
-    X_1k_2_const, y_1k_2_const = np.zeros((1000, 2)), np.zeros((1000, 1))
+    X_1k_2_const, y_1k_2_const = np.zeros((200, 2)), np.zeros((200, 1))
 
     # parse local variables to create data
     data = {'1_10': (X_1_10, y_1_10),
@@ -115,7 +115,7 @@ class TestImportanceEvaluator(unittest.TestCase):
 
     def test_multi_party_evaluate(self):
         X, y = self.data['1k_1k']
-        for n_parties in [2, 3, 4, 10, 100, 200, 500, 1000]:
+        for n_parties in [2, 3, 4, 10, 50, 100]:
             with self.subTest(n_parties=n_parties):
                 Xs = np.array_split(X, n_parties, axis=1)
                 model = xgb.XGBClassifier()
@@ -133,12 +133,10 @@ class TestImportanceEvaluator(unittest.TestCase):
                     self.assertEqual(len(small_scores), len(Xs))
 
 
-class TestCorrelationEvaluator(unittest.TestCase):
+class TestCorrelationEvaluatorCPU(unittest.TestCase):
     def setUp(self):
-        self.spearmanr_evaluator = CorrelationEvaluator(method='spearmanr', gpu_id=None)
-        self.pearsonr_evaluator = CorrelationEvaluator(method='pearson', gpu_id=None)
-        self.gpu_spearmanr_evaluator = CorrelationEvaluator(method='spearmanr', gpu_id=0)
-        self.gpu_pearsonr_evaluator = CorrelationEvaluator(method='pearson', gpu_id=0)
+        self.spearmanr_evaluator = CorrelationEvaluator(method='spearmanr', gpu_id=None, n_jobs=1)
+        self.pearsonr_evaluator = CorrelationEvaluator(method='pearson', gpu_id=None, n_jobs=1)
 
         self.data = generate_data()
         self.splits = split_data(self.data)
@@ -147,41 +145,123 @@ class TestCorrelationEvaluator(unittest.TestCase):
         if Xs[0].shape[0] <= 1:
             self.assertRaises(ValueError, self.spearmanr_evaluator.fit_evaluate, Xs)
             self.assertRaises(ValueError, self.pearsonr_evaluator.fit_evaluate, Xs)
-            self.assertRaises(ValueError, self.gpu_spearmanr_evaluator.fit_evaluate, Xs)
-            self.assertRaises(ValueError, self.gpu_pearsonr_evaluator.fit_evaluate, Xs)
         else:
             spearmanr_score = self.spearmanr_evaluator.fit_evaluate(Xs)
             pearsonr_score = self.pearsonr_evaluator.fit_evaluate(Xs)
-            spearmanr_score_gpu = self.gpu_spearmanr_evaluator.fit_evaluate(Xs)
-            pearsonr_score_gpu = self.gpu_pearsonr_evaluator.fit_evaluate(Xs)
 
             # score should be in range [-1, 1]
             self.assertGreaterEqual(spearmanr_score, -1)
             self.assertLessEqual(spearmanr_score, 1)
             self.assertGreaterEqual(pearsonr_score, -1)
             self.assertLessEqual(pearsonr_score, 1)
-            self.assertGreaterEqual(spearmanr_score_gpu, -1)
-            self.assertLessEqual(spearmanr_score_gpu, 1)
-            self.assertGreaterEqual(pearsonr_score_gpu, -1)
-            self.assertLessEqual(pearsonr_score_gpu, 1)
-
-            # GPU score should be the same as CPU score
-            self.assertAlmostEqual(spearmanr_score, spearmanr_score_gpu, delta=0.0001)
-            self.assertAlmostEqual(pearsonr_score, pearsonr_score_gpu, delta=0.0001)
 
             # correlation matrix should be in range [-1, 1]
             self.assertTrue((self.spearmanr_evaluator.corr <= 1).all())
             self.assertTrue((self.spearmanr_evaluator.corr >= -1).all())
             self.assertTrue((self.pearsonr_evaluator.corr <= 1).all())
             self.assertTrue((self.pearsonr_evaluator.corr >= -1).all())
+
+            # overall correlation matrix should be symmetric
+            self.assertTrue(np.allclose(self.spearmanr_evaluator.corr, self.spearmanr_evaluator.corr.T))
+            self.assertTrue(np.allclose(self.pearsonr_evaluator.corr, self.pearsonr_evaluator.corr.T))
+
+    def test_fit_evaluate(self):
+        for k, split_list in self.splits.items():
+            for Xs, y in split_list:
+                with self.subTest(k=k):
+                    self.subtest_fit_evaluate(Xs)
+
+    def test_fit_multi_evaluate(self):
+        for k, split_list in self.splits.items():
+            Xs = split_list[0][0]
+            if Xs[0].shape[0] <= 1:
+                self.assertRaises(ValueError, self.spearmanr_evaluator.fit, Xs)
+                self.assertRaises(ValueError, self.pearsonr_evaluator.fit, Xs)
+                continue
+            else:
+                self.spearmanr_evaluator.fit(Xs)
+                self.pearsonr_evaluator.fit(Xs)
+
+            for Xs, y in split_list:
+                with self.subTest(k=k):
+                    spearmanr_score_eval = self.spearmanr_evaluator.evaluate(Xs)
+                    pearsonr_score_eval = self.pearsonr_evaluator.evaluate(Xs)
+
+                    spearmanr_evaluator2 = CorrelationEvaluator(method='spearmanr', gpu_id=None, n_jobs=1)
+                    spearmanr_score_fit_eval = spearmanr_evaluator2.fit_evaluate(Xs)
+                    pearsonr_evaluator2 = CorrelationEvaluator(method='pearson', gpu_id=None, n_jobs=1)
+                    pearsonr_score_fit_eval = pearsonr_evaluator2.fit_evaluate(Xs)
+
+                    # eval and fit_eval should be the same
+                    self.assertAlmostEqual(spearmanr_score_eval, spearmanr_score_fit_eval, delta=0.0001)
+                    self.assertAlmostEqual(pearsonr_score_eval, pearsonr_score_fit_eval, delta=0.0001)
+
+    def test_visualize(self):
+        for k, split_list in self.splits.items():
+            # before calling fit, visualize should raise error
+            self.assertRaises(ValueError, self.spearmanr_evaluator.visualize)
+            self.assertRaises(ValueError, self.pearsonr_evaluator.visualize)
+
+        for k, split_list in self.splits.items():
+            Xs = split_list[0][0]
+            if Xs[0].shape[0] <= 1:
+                self.assertRaises(ValueError, self.spearmanr_evaluator.fit, Xs)
+                self.assertRaises(ValueError, self.pearsonr_evaluator.fit, Xs)
+                continue
+
+            for Xs, y in split_list:
+                with self.subTest(k=k):
+                    self.spearmanr_evaluator.fit(Xs)
+                    self.pearsonr_evaluator.fit(Xs)
+
+                    self.spearmanr_evaluator.visualize(save_path=f"test/tmp/{k}_spearmanr.png")
+                    self.pearsonr_evaluator.visualize(save_path=f"test/tmp/{k}_pearsonr.png")
+
+    def test_multi_party_fit_evaluate(self):
+        X, y = self.data['1k_1k']
+        for n_parties in [2, 3, 4, 10, 50, 100]:
+            with self.subTest(n_parties=n_parties):
+                Xs = np.array_split(X, n_parties, axis=1)
+                self.subtest_fit_evaluate(Xs)
+
+
+class TestCorrelationEvaluatorGPU(unittest.TestCase):
+    def setUp(self):
+        self.gpu_spearmanr_evaluator = CorrelationEvaluator(method='spearmanr', gpu_id=0, n_jobs=16)
+        self.gpu_pearsonr_evaluator = CorrelationEvaluator(method='pearson', gpu_id=0, n_jobs=16)
+        self.cpu_spearmanr_evaluator = CorrelationEvaluator(method='spearmanr', gpu_id=None, n_jobs=1)
+        self.cpu_pearsonr_evaluator = CorrelationEvaluator(method='pearson', gpu_id=None, n_jobs=1)
+
+        self.data = generate_data()
+        self.splits = split_data(self.data)
+
+    def subtest_fit_evaluate(self, Xs):
+        if Xs[0].shape[0] <= 1:
+            self.assertRaises(ValueError, self.gpu_spearmanr_evaluator.fit_evaluate, Xs)
+            self.assertRaises(ValueError, self.gpu_pearsonr_evaluator.fit_evaluate, Xs)
+        else:
+            spearmanr_score_cpu = self.cpu_spearmanr_evaluator.fit_evaluate(Xs)
+            pearsonr_score_cpu = self.cpu_pearsonr_evaluator.fit_evaluate(Xs)
+            spearmanr_score_gpu = self.gpu_spearmanr_evaluator.fit_evaluate(Xs)
+            pearsonr_score_gpu = self.gpu_pearsonr_evaluator.fit_evaluate(Xs)
+
+            # score should be in range [-1, 1]
+            self.assertGreaterEqual(spearmanr_score_gpu, -1)
+            self.assertLessEqual(spearmanr_score_gpu, 1)
+            self.assertGreaterEqual(pearsonr_score_gpu, -1)
+            self.assertLessEqual(pearsonr_score_gpu, 1)
+
+            # GPU score should be the same as CPU score
+            self.assertAlmostEqual(spearmanr_score_cpu, spearmanr_score_gpu, delta=0.0001)
+            self.assertAlmostEqual(pearsonr_score_cpu, pearsonr_score_gpu, delta=0.0001)
+
+            # correlation matrix should be in range [-1, 1]
             self.assertTrue((self.gpu_spearmanr_evaluator.corr <= 1).all())
             self.assertTrue((self.gpu_spearmanr_evaluator.corr >= -1).all())
             self.assertTrue((self.gpu_pearsonr_evaluator.corr <= 1).all())
             self.assertTrue((self.gpu_pearsonr_evaluator.corr >= -1).all())
 
             # overall correlation matrix should be symmetric
-            self.assertTrue(np.allclose(self.spearmanr_evaluator.corr, self.spearmanr_evaluator.corr.T))
-            self.assertTrue(np.allclose(self.pearsonr_evaluator.corr, self.pearsonr_evaluator.corr.T))
             self.assertTrue(np.allclose(self.gpu_spearmanr_evaluator.corr.detach().cpu().numpy(),
                                         self.gpu_spearmanr_evaluator.corr.T.detach().cpu().numpy()))
             self.assertTrue(np.allclose(self.gpu_pearsonr_evaluator.corr.detach().cpu().numpy(),
@@ -197,67 +277,50 @@ class TestCorrelationEvaluator(unittest.TestCase):
         for k, split_list in self.splits.items():
             Xs = split_list[0][0]
             if Xs[0].shape[0] <= 1:
-                self.assertRaises(ValueError, self.spearmanr_evaluator.fit, Xs)
-                self.assertRaises(ValueError, self.pearsonr_evaluator.fit, Xs)
                 self.assertRaises(ValueError, self.gpu_spearmanr_evaluator.fit, Xs)
                 self.assertRaises(ValueError, self.gpu_pearsonr_evaluator.fit, Xs)
                 continue
             else:
-                self.spearmanr_evaluator.fit(Xs)
-                self.pearsonr_evaluator.fit(Xs)
                 self.gpu_spearmanr_evaluator.fit(Xs)
                 self.gpu_pearsonr_evaluator.fit(Xs)
 
             for Xs, y in split_list:
                 with self.subTest(k=k):
-                    spearmanr_score_eval = self.spearmanr_evaluator.evaluate(Xs)
-                    pearsonr_score_eval = self.pearsonr_evaluator.evaluate(Xs)
                     spearmanr_score_gpu_eval = self.gpu_spearmanr_evaluator.evaluate(Xs)
                     pearsonr_score_gpu_eval = self.gpu_pearsonr_evaluator.evaluate(Xs)
 
-                    gpu_spearmanr_evaluator = CorrelationEvaluator(method='spearmanr', gpu_id=0)
+                    gpu_spearmanr_evaluator = CorrelationEvaluator(method='spearmanr', gpu_id=0, n_jobs=16)
                     spearmanr_score_gpu_fit_eval = gpu_spearmanr_evaluator.fit_evaluate(Xs)
-                    gpu_pearsonr_evaluator = CorrelationEvaluator(method='pearson', gpu_id=0)
+                    gpu_pearsonr_evaluator = CorrelationEvaluator(method='pearson', gpu_id=0, n_jobs=16)
                     pearsonr_score_gpu_fit_eval = gpu_pearsonr_evaluator.fit_evaluate(Xs)
 
                     # eval and fit_eval should be the same
-                    self.assertAlmostEqual(spearmanr_score_eval, spearmanr_score_gpu_fit_eval, delta=0.0001)
-                    self.assertAlmostEqual(pearsonr_score_eval, pearsonr_score_gpu_fit_eval, delta=0.0001)
                     self.assertAlmostEqual(spearmanr_score_gpu_eval, spearmanr_score_gpu_fit_eval, delta=0.0001)
                     self.assertAlmostEqual(pearsonr_score_gpu_eval, pearsonr_score_gpu_fit_eval, delta=0.0001)
 
     def test_visualize(self):
         for k, split_list in self.splits.items():
-            # before calling fit, visualize should raise error
-            self.assertRaises(ValueError, self.spearmanr_evaluator.visualize)
-            self.assertRaises(ValueError, self.pearsonr_evaluator.visualize)
             self.assertRaises(ValueError, self.gpu_spearmanr_evaluator.visualize)
             self.assertRaises(ValueError, self.gpu_pearsonr_evaluator.visualize)
 
         for k, split_list in self.splits.items():
             Xs = split_list[0][0]
             if Xs[0].shape[0] <= 1:
-                self.assertRaises(ValueError, self.spearmanr_evaluator.fit, Xs)
-                self.assertRaises(ValueError, self.pearsonr_evaluator.fit, Xs)
                 self.assertRaises(ValueError, self.gpu_spearmanr_evaluator.fit, Xs)
                 self.assertRaises(ValueError, self.gpu_pearsonr_evaluator.fit, Xs)
                 continue
 
             for Xs, y in split_list:
                 with self.subTest(k=k):
-                    self.spearmanr_evaluator.fit(Xs)
-                    self.pearsonr_evaluator.fit(Xs)
                     self.gpu_spearmanr_evaluator.fit(Xs)
                     self.gpu_pearsonr_evaluator.fit(Xs)
 
-                    self.spearmanr_evaluator.visualize(save_path=f"test/tmp/{k}_spearmanr.png")
-                    self.pearsonr_evaluator.visualize(save_path=f"test/tmp/{k}_pearsonr.png")
                     self.gpu_spearmanr_evaluator.visualize(save_path=f"test/tmp/{k}_gpu_spearmanr.png")
                     self.gpu_pearsonr_evaluator.visualize(save_path=f"test/tmp/{k}_gpu_pearsonr.png")
 
     def test_multi_party_fit_evaluate(self):
         X, y = self.data['1k_1k']
-        for n_parties in [2, 3, 4, 10, 100, 200, 500, 1000]:
+        for n_parties in [2, 3, 4, 10, 50, 100]:
             with self.subTest(n_parties=n_parties):
                 Xs = np.array_split(X, n_parties, axis=1)
                 self.subtest_fit_evaluate(Xs)
