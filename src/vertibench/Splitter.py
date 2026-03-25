@@ -28,6 +28,10 @@ class Splitter(abc.ABC):
 
     def split(self, *Xs, indices=None, allow_empty_party=False, fill=None, **kwargs):
         assert len(Xs) > 0, "At least one dataset should be given"
+        n_features = Xs[0].shape[1]
+        if n_features < self.num_parties:
+            raise ValueError(
+                f"Number of features ({n_features}) must be >= number of parties ({self.num_parties})")
         ans = []
 
         # calculate the indices for each party for all datasets
@@ -103,7 +107,7 @@ class ImportanceSplitter(Splitter):
         xs.append(1 - sum(xs))
         return np.array(xs)
 
-    def split_indices(self, X, allow_empty_party=False):
+    def split_indices(self, X, allow_empty_party=False, **kwargs):
         """
         Split the indices of X by feature importance.
         :param allow_empty_party: [bool] whether to allow parties with zero features
@@ -168,7 +172,7 @@ class CorrelationSplitter(Splitter):
         super().__init__(num_parties)
         self.evaluator = evaluator
         if evaluator is None:
-            self.evaluator = CorrelationEvaluator(gpu_id=gpu_id)
+            self.evaluator = CorrelationEvaluator(gpu_id=gpu_id, n_jobs=n_jobs)
         self.seed = seed
         self.gpu_id = gpu_id
         if self.gpu_id is not None:
@@ -333,9 +337,17 @@ class CorrelationSplitter(Splitter):
         assert (np.sort(np.concatenate(self.best_feature_per_party)) == np.arange(X.shape[1])).all()
         return self.best_feature_per_party
 
-    def fit_split(self, X, **kwargs):
-        self.fit(X, **kwargs)
-        return self.split(X, **kwargs)
+    def fit_split(self, X, beta=0.5, **fit_kwargs):
+        """
+        Fit the splitter and split the data.
+        :param X: [np.ndarray] 2D dataset
+        :param beta: [float] the tightness of inner-party correlation (passed to split_indices, not fit)
+        :param fit_kwargs: additional keyword arguments passed to fit() (BRKGA parameters for fit_min_max)
+        """
+        if not (0 <= beta <= 1):
+            raise ValueError(f"beta should be in [0, 1], got {beta}")
+        self.fit(X, **fit_kwargs)
+        return self.split(X, beta=beta)
 
     def visualize(self, *args, **kwargs):
         return self.evaluator.visualize(*args, **kwargs)
